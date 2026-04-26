@@ -65,7 +65,7 @@ export async function createOfframpSession({
   }
 
   // 2. Deep link redirectUrl — Coinbase calls this after the user clicks "Cash out now".
-  const redirectUrl = `onrampdemo://offramp-send?partnerUserRef=${encodeURIComponent(userId)}`;
+  const redirectUrl = `stablepay://offramp-send?partnerUserRef=${encodeURIComponent(userId)}`;
 
   // 3. addresses param: JSON map of address → blockchains (Coinbase URL convention)
   const addressesParam = JSON.stringify({ [address]: [blockchain] });

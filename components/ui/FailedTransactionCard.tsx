@@ -2,7 +2,7 @@
  * FailedTransactionCard - Error UI for failed transactions
  *
  * Displays error message and provides easy access to support.
- * Matches the Coinbase Onramp error screen design.
+ * Matches the StablePay error screen design.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -62,7 +62,7 @@ export function FailedTransactionCard({
       // Fallback - open email with minimal info
       await openSupportEmail({
         flowType: 'guest',
-        partnerName: 'Onramp V2 Demo',
+        partnerName: 'StablePay',
         errorMessage: errorMessage || message,
       } as GuestCheckoutDebugInfo);
     }
@@ -93,7 +93,7 @@ export function FailedTransactionCard({
             {' '}for support.
           </Text>
           <Text style={styles.responseTime}>
-            We'll resolve the issue within 1 business day.
+            We&apos;ll resolve the issue within 1 business day.
           </Text>
         </View>
 

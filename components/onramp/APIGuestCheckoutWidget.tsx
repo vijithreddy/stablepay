@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { WebView } from "react-native-webview";
 
 /**
- * Guest Checkout WebView Widget for Apple Pay.
+ * Guest Checkout WebView for Apple Pay.
  *
  * Orchestrates the payment flow via a behind-the-scenes WebView:
  *
@@ -10,13 +10,7 @@ import { WebView } from "react-native-webview";
  * 2. On load_success (page event), auto-clicks the Apple Pay button
  * 3. What happens next depends on the mode:
  *
- *    PRODUCTION (isSandbox=false):
- *      Native Apple Pay sheet appears. User confirms.
- *
- *    SANDBOX (isSandbox=true):
- *      partnerUserRef is prefixed with "sandbox-" (handled by useOnramp).
- *      URL gets useApplePaySandbox=true appended.
- *      Transaction completes automatically without real funds.
+ *    Native Apple Pay sheet appears. User confirms.
  *
  * 4. All transaction lifecycle events are dispatched by the payment page itself
  *    via postMessage. We only consume and log them.
@@ -27,7 +21,6 @@ const PAYMENT_CONFIG = {
     buttonId: 'api-onramp-apple-pay-button',
     hideCSS: 'apple-pay-button { display: none !important; }',
     label: 'Apple Pay',
-    sandboxParam: 'useApplePaySandbox',
   },
 } as const;
 
@@ -55,7 +48,6 @@ export function APIGuestCheckoutWidget({
 
   const config = PAYMENT_CONFIG[paymentMethod] ?? PAYMENT_CONFIG.GUEST_CHECKOUT_APPLE_PAY;
   const finalUrl = paymentUrl;
-  const sandboxPrefix = isSandbox ? '[SANDBOX] ' : '';
 
   useEffect(() => {
     return () => {
@@ -136,7 +128,7 @@ export function APIGuestCheckoutWidget({
               break;
 
             case "onramp_api.cancel":
-              onAlert?.(`${sandboxPrefix}Payment Cancelled`, "The payment was cancelled by the user", 'info');
+              onAlert?.(`Payment Cancelled`, "The payment was cancelled by the user", 'info');
               setIsProcessingPayment?.(false);
               onClose?.();
               break;
@@ -144,7 +136,7 @@ export function APIGuestCheckoutWidget({
             case "onramp_api.commit_error":
             case "onramp_api.load_error":
               onAlert?.(
-                `${sandboxPrefix}Payment Error`,
+                `Payment Error`,
                 `The payment failed: ${data.data?.errorCode} - ${data.data?.errorMessage}`,
                 'error'
               );
@@ -159,8 +151,8 @@ export function APIGuestCheckoutWidget({
               }
               setTransactionStatus?.('pending');
               onAlert?.(
-                `${sandboxPrefix}Payment Successful!`,
-                "Your payment has been processed. We're now delivering your crypto to your wallet.",
+                `Payment Successful!`,
+                "Your payment has been processed. We're now delivering your USDC to your wallet.",
                 'success'
               );
               break;
@@ -169,7 +161,7 @@ export function APIGuestCheckoutWidget({
               timeoutRef.current = setTimeout(() => {
                 onAlert?.(
                   "Delivery Taking Longer",
-                  "Your payment was successful, but crypto delivery is taking longer than expected.",
+                  "Your payment was successful, but USDC delivery is taking longer than expected.",
                   'info'
                 );
               }, 300000);
@@ -181,7 +173,7 @@ export function APIGuestCheckoutWidget({
                 timeoutRef.current = null;
               }
               setTransactionStatus?.('success');
-              onAlert?.(`${sandboxPrefix}Complete!`, "Your crypto has been delivered to your wallet!", 'success');
+              onAlert?.(`Complete!`, "Your USDC has been delivered to your wallet!", 'success');
               setTimeout(() => onClose?.(), 2000);
               break;
 
@@ -192,7 +184,7 @@ export function APIGuestCheckoutWidget({
               }
               setTransactionStatus?.('error');
               onAlert?.(
-                `${sandboxPrefix}Transaction Failed`,
+                `Transaction Failed`,
                 `There was an issue: ${data.data?.errorCode} - ${data.data?.errorMessage}`,
                 'error'
               );

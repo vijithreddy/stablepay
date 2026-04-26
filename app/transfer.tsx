@@ -14,7 +14,7 @@
  */
 
 import { CoinbaseAlert } from '@/components/ui/CoinbaseAlerts';
-import { COLORS } from '@/constants/Colors';
+import { Paper } from '@/constants/PaperTheme';
 import { isTestSessionActive } from '@/utils/sharedState';
 import { useCurrentUser, useSendUserOperation } from '@coinbase/cdp-hooks';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -28,17 +28,15 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { parseEther, parseUnits, createPublicClient, http, formatEther } from 'viem';
 import { base, baseSepolia, mainnet, sepolia } from 'viem/chains';
-
-const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BLUE, WHITE, BORDER } = COLORS;
 
 export default function TransferScreen() {
   const router = useRouter();
@@ -367,11 +365,11 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={TEXT_PRIMARY} />
+          <Ionicons name="chevron-back" size={24} color={Paper.colors.sand} />
         </Pressable>
         <Text style={styles.headerTitle}>Transfer Tokens</Text>
         <View style={{ width: 40 }} />
@@ -382,7 +380,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
         style={{ flex: 1 }}
       >
         <ScrollView
-          style={{ flex: 1, backgroundColor: CARD_BG }}
+          style={{ flex: 1, backgroundColor: Paper.colors.background }}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
@@ -449,7 +447,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
                 value={recipientAddress}
                 onChangeText={handleAddressChange}
                 placeholder="0x..."
-                placeholderTextColor={TEXT_SECONDARY}
+                placeholderTextColor={Paper.colors.sand}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -461,7 +459,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
                     setAddressError(null);
                   }}
                 >
-                  <Ionicons name="close-circle" size={20} color={TEXT_SECONDARY} />
+                  <Ionicons name="close-circle" size={20} color={Paper.colors.sand} />
                 </Pressable>
               ) : (
                 <Pressable
@@ -471,7 +469,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
                     if (text) handleAddressChange(text);
                   }}
                 >
-                  <Ionicons name="clipboard-outline" size={20} color={BLUE} />
+                  <Ionicons name="clipboard-outline" size={20} color={Paper.colors.orange} />
                 </Pressable>
               )}
             </View>
@@ -491,7 +489,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
               value={amount}
               onChangeText={setAmount}
               placeholder="0.00"
-              placeholderTextColor={TEXT_SECONDARY}
+              placeholderTextColor={Paper.colors.sand}
               keyboardType="decimal-pad"
             />
 
@@ -527,12 +525,12 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
 
           {/* Send Button */}
           <Pressable
-            style={[styles.mainSendButton, (!recipientAddress || !amount) && styles.buttonDisabled]}
+            style={({ pressed }) => [styles.mainSendButton, (!recipientAddress || !amount) && styles.buttonDisabled, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
             onPress={handleSend}
             disabled={!recipientAddress || !amount || sending}
           >
             {sending ? (
-              <ActivityIndicator color={WHITE} />
+              <ActivityIndicator color={Paper.colors.white} />
             ) : (
               <Text style={styles.mainSendButtonText}>Send</Text>
             )}
@@ -550,7 +548,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
         <View style={styles.modalOverlay}>
           <View style={styles.confirmationCard}>
             <View style={styles.confirmationHeader}>
-              <Ionicons name="shield-checkmark" size={48} color={BLUE} />
+              <Ionicons name="shield-checkmark" size={48} color={Paper.colors.orange} />
               <Text style={styles.confirmationTitle}>Confirm Transfer</Text>
             </View>
 
@@ -610,7 +608,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.confirmButton, styles.sendButton]}
+                style={({ pressed }) => [styles.confirmButton, styles.sendButton, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
                 onPress={handleConfirmedSend}
               >
                 <Text style={styles.sendButtonText}>Confirm & Send</Text>
@@ -642,7 +640,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: CARD_BG, // was DARK_BG
+    backgroundColor: Paper.colors.background,
   },
   content: {
     flex: 1,
@@ -663,9 +661,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: CARD_BG,
+    backgroundColor: Paper.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: Paper.colors.border,
   },
   backButton: {
     padding: 8,
@@ -673,48 +671,51 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   scrollContent: {
     padding: 20,
     gap: 16,
   },
   card: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
+    backgroundColor: Paper.colors.surface,
+    borderRadius: 20,
     padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     marginBottom: 12,
   },
   networkText: {
     fontSize: 18,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     marginBottom: 8,
   },
   helper: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     lineHeight: 16,
   },
   input: {
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.surfaceWarm,
     borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
+    borderColor: Paper.colors.border,
+    borderRadius: 14,
     padding: 16,
     fontSize: 16,
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   usdValue: {
     fontSize: 16,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     marginTop: 8,
     marginBottom: 4,
   },
@@ -725,7 +726,7 @@ const styles = StyleSheet.create({
   },
   quickButton: {
     flex: 1,
-    backgroundColor: BORDER,
+    backgroundColor: Paper.colors.border,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
@@ -734,20 +735,19 @@ const styles = StyleSheet.create({
   quickButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   mainSendButton: {
-    backgroundColor: BLUE,
-    borderRadius: 22,
-    paddingVertical: 16,
+    backgroundColor: Paper.colors.orange,
+    borderRadius: 14,
     paddingHorizontal: 32,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 24,
-    minHeight: 52,
+    height: 54,
   },
   mainSendButtonText: {
-    color: WHITE,
+    color: Paper.colors.white,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -757,21 +757,21 @@ const styles = StyleSheet.create({
   tokenSymbol: {
     fontSize: 18,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     marginBottom: 4,
   },
   tokenName: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
   },
   tokenAmount: {
     fontSize: 16,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   tokenUsd: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     marginTop: 4,
   },
   modalOverlay: {
@@ -782,12 +782,10 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   confirmationCard: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Paper.colors.surface,
     borderRadius: 20,
     width: '100%',
     maxWidth: 400,
-    borderWidth: 1,
-    borderColor: BORDER,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
@@ -798,12 +796,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: Paper.colors.border,
   },
   confirmationTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     marginTop: 12,
   },
   confirmationBody: {
@@ -817,12 +815,12 @@ const styles = StyleSheet.create({
   },
   confirmLabel: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontWeight: '500',
   },
   confirmValue: {
     fontSize: 14,
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     fontWeight: '600',
     flex: 1,
     textAlign: 'right',
@@ -831,17 +829,17 @@ const styles = StyleSheet.create({
   confirmAmount: {
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
+    borderTopColor: Paper.colors.border,
     marginTop: 8,
   },
   confirmAmountValue: {
     fontSize: 20,
-    color: BLUE,
+    color: Paper.colors.orange,
     fontWeight: '700',
   },
   confirmUsd: {
     fontSize: 14,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     textAlign: 'right',
     marginTop: -8,
   },
@@ -850,7 +848,7 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
+    borderTopColor: Paper.colors.border,
   },
   confirmButton: {
     flex: 1,
@@ -859,19 +857,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: BORDER,
+    backgroundColor: Paper.colors.border,
   },
   sendButton: {
-    backgroundColor: BLUE,
+    backgroundColor: Paper.colors.orange,
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   sendButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: WHITE,
+    color: Paper.colors.white,
   },
 });

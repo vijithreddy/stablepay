@@ -1,13 +1,15 @@
 import { CDPHooksProvider, Config } from "@coinbase/cdp-hooks";
 import { Stack } from "expo-router";
-import { COLORS } from "../constants/Colors";
+import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Paper } from "../constants/PaperTheme";
 
 import { AuthGate } from "@/components/AuthGate";
 import { AuthInitializer } from "@/components/AuthInitializer";
-import { getTestWalletEvm, hydrateSandboxMode, hydrateTestSession, hydrateVerifiedPhone, hydrateLifetimeTransactionThreshold, isTestSessionActive, setCurrentWalletAddress } from "@/utils/sharedState";
+import { getTestWalletEvm, hydrateTestSession, hydrateVerifiedPhone, hydrateLifetimeTransactionThreshold, isTestSessionActive, setCurrentWalletAddress } from "@/utils/sharedState";
 import { useEffect } from "react";
 
-const { BLUE, TEXT_SECONDARY, CARD_BG, BORDER, TEXT_PRIMARY } = COLORS;
+console.log('[StablePay] Backend URL:', process.env.EXPO_PUBLIC_BASE_URL);
 
 // CDP configuration — USDC/Base/Apple-Pay only
 const cdpConfig: Config = {
@@ -22,9 +24,6 @@ console.log('RootLayout mounted, CDP config:', cdpConfig);
 
 export default function RootLayout() {
   useEffect(() => {
-    // Hydrate sandbox mode preference
-    hydrateSandboxMode().catch(() => {});
-
     // Hydrate phone verification
     hydrateVerifiedPhone().catch(() => {});
 
@@ -36,56 +35,59 @@ export default function RootLayout() {
       if (isTestSessionActive()) {
         console.log('🧪 Test session restored from storage');
         setCurrentWalletAddress(getTestWalletEvm());
-        // Note: NOT forcing sandbox - let reviewer choose mode via Profile
+        // Test session uses hardcoded addresses for demo
       }
     }).catch(() => {});
   }, []);
 
   return (
-    <CDPHooksProvider config={cdpConfig}>
-      <AuthInitializer>
-        <AuthGate>
-          <Stack screenOptions={{ headerShown: false }}>
-            {/* Auth screens */}
-            <Stack.Screen
-              name="auth/login"
-              options={{
-                headerShown: false,
-                gestureEnabled: false,  // Can't swipe back from login
-                animation: 'fade',
-              }}
-            />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <CDPHooksProvider config={cdpConfig}>
+        <StatusBar style="dark" />
+        <AuthInitializer>
+          <AuthGate>
+            <Stack screenOptions={{ headerShown: false }}>
+              {/* Auth screens */}
+              <Stack.Screen
+                name="auth/login"
+                options={{
+                  headerShown: false,
+                  gestureEnabled: false,  // Can't swipe back from login
+                  animation: 'fade',
+                }}
+              />
 
-            {/* Phone verification pages - no tabs */}
-            <Stack.Screen
-              name="phone-verify"
-              options={{
-                presentation: 'card',
-                animation: 'slide_from_right',
-              }}
-            />
-            <Stack.Screen
-                name="phone-code"
+              {/* Phone verification pages - no tabs */}
+              <Stack.Screen
+                name="phone-verify"
                 options={{
                   presentation: 'card',
                   animation: 'slide_from_right',
                 }}
-            />
+              />
+              <Stack.Screen
+                  name="phone-code"
+                  options={{
+                    presentation: 'card',
+                    animation: 'slide_from_right',
+                  }}
+              />
 
-            {/* Offramp send — reached via deep link after Coinbase sell flow */}
-            <Stack.Screen
-              name="offramp-send"
-              options={{
-                presentation: 'card',
-                animation: 'slide_from_bottom',
-              }}
-            />
+              {/* Offramp send — reached via deep link after Coinbase sell flow */}
+              <Stack.Screen
+                name="offramp-send"
+                options={{
+                  presentation: 'card',
+                  animation: 'slide_from_bottom',
+                }}
+              />
 
-            {/* Main app with tabs */}
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-        </AuthGate>
-      </AuthInitializer>
-    </CDPHooksProvider>
+              {/* Main app with tabs */}
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
+          </AuthGate>
+        </AuthInitializer>
+      </CDPHooksProvider>
+    </GestureHandlerRootView>
   );
 }

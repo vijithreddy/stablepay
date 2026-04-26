@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CoinbaseAlert } from '../components/ui/CoinbaseAlerts';
-import { COLORS } from '../constants/Colors';
+import { Paper } from '../constants/PaperTheme';
 import { TEST_ACCOUNTS } from '../constants/TestAccounts';
 import { setVerifiedPhone, setCurrentWalletAddress, setTestSession } from '../utils/sharedState';
 import { useCurrentUser, useVerifySmsOTP, useSignInWithSms, useLinkSms, useIsInitialized } from '@coinbase/cdp-hooks';
 
-const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, BLUE, WHITE } = COLORS;
 const RESEND_SECONDS = 30;
 
 export default function PhoneCodeScreen() {
@@ -278,7 +278,7 @@ export default function PhoneCodeScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={TEXT_PRIMARY} />
+          <Ionicons name="chevron-back" size={24} color={Paper.colors.sand} />
         </Pressable>
       </View>
 
@@ -325,7 +325,7 @@ export default function PhoneCodeScreen() {
               disabled={verifying || code.length < 4}
             >
               {verifying ? (
-                <ActivityIndicator color={WHITE} />
+                <ActivityIndicator color={Paper.colors.white} />
               ) : (
                 <Text style={styles.continueButtonText}>Verify</Text>
               )}
@@ -361,7 +361,7 @@ export default function PhoneCodeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -385,15 +385,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     textAlign: 'center',
     marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 40,
@@ -404,35 +404,37 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   codeInput: {
-    backgroundColor: CARD_BG,
-    borderWidth: 2,
-    borderColor: BLUE,
-    borderRadius: 12,
+    backgroundColor: Paper.colors.surface,
+    borderWidth: 1.5,
+    borderColor: Paper.colors.border,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 20,
-    fontSize: 24,
-    color: TEXT_PRIMARY,
+    fontSize: 28,
+    fontWeight: '700',
+    color: Paper.colors.navy,
     textAlign: 'center',
-    letterSpacing: 8,
+    letterSpacing: 12,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   continueButton: {
-    backgroundColor: BLUE,
-    borderRadius: 25,
-    paddingVertical: 16,
+    backgroundColor: Paper.colors.orange,
+    height: 54,
+    borderRadius: 14,
     paddingHorizontal: 32,
     width: '100%',
     alignItems: 'center',
-    shadowColor: BLUE,
+    justifyContent: 'center',
+    shadowColor: Paper.colors.orange,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
   continueButtonText: {
-    color: WHITE,
-    fontSize: 18,
-    fontWeight: '600',
+    color: Paper.colors.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
   disabledButton: {
     opacity: 0.5,
@@ -442,37 +444,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resendText: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 14,
   },
   resendButton: {
-    color: BLUE,
-    fontSize: 16,
+    color: Paper.colors.sand,
+    fontSize: 14,
     fontWeight: '600',
   },
   topPadding: {
     height: 20,
   },
   disabledText: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
   },
   smsPreview: {
     marginTop: 40,
-    backgroundColor: CARD_BG,
-    borderRadius: 12,
+    backgroundColor: Paper.colors.surface,
+    borderRadius: 14,
     padding: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
   },
   smsLabel: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     marginBottom: 4,
   },
   smsCode: {
     fontSize: 20,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
 });

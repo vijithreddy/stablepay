@@ -1,326 +1,141 @@
-import { getCurrentPartnerUserRef, isTestSessionActive } from "@/utils/sharedState";
-import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
+  Linking,
   StyleSheet,
   Text,
-  View
+  View,
 } from "react-native";
-import { CoinbaseAlert } from "../../components/ui/CoinbaseAlerts";
-import { FailedTransactionBadge } from "../../components/ui/FailedTransactionCard";
-import { COLORS } from "../../constants/Colors";
-import { TEST_ACCOUNTS } from "../../constants/TestAccounts";
-import { fetchTransactionHistory } from "../../utils/fetchTransactionHistory";
-import { useCurrentUser, useGetAccessToken } from "@coinbase/cdp-hooks";
-
-
-const { BLUE, DARK_BG, CARD_BG, BORDER, TEXT_PRIMARY, TEXT_SECONDARY, WHITE } = COLORS;
-
-type Transaction = {
-  transaction_id: string;
-  status: string;
-  payment_total: {
-    value: string;
-    currency: string;
-  };
-  purchase_currency: string;
-  purchase_network: string;
-  purchase_amount?: {
-    value: string;
-    currency: string;
-  };
-  payment_method?: string;
-  created_at: string;
-  partner_user_ref: string;
-  wallet_address: string;
-  tx_hash: string;
-};
+import { useFocusEffect } from "expo-router";
+import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
+import AnimatedPressable from "../../components/ui/AnimatedPressable";
+import { Paper } from "../../constants/PaperTheme";
+import {
+  getActivity,
+  formatTimeAgo,
+  ActivityItem,
+} from "../../utils/activity";
+import { truncateAddress } from "../../utils/contacts";
 
 export default function History() {
-  const { currentUser } = useCurrentUser();
-  const { getAccessToken } = useGetAccessToken();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [currentUserRef, setCurrentUserRef] = useState<string | null>(null);
-  const [nextPageKey, setNextPageKey] = useState<string | null>(null);
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [alertState, setAlertState] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    type: 'success' | 'error' | 'info';
-  }>({
-    visible: false,
-    title: '',
-    message: '',
-    type: 'info'
-  });
-
-  const loadTransactions = useCallback(async (pageKey?: string, append: boolean = false) => {
-    // Use CDP userId or test account userId for TestFlight
-    const isTestFlight = isTestSessionActive();
-    const userId = isTestFlight ? TEST_ACCOUNTS.userId : currentUser?.userId;
-
-    if (!userId) {
-      console.log('No user ID available yet');
-      return;
-    }
-
-    console.log('🔍 [HISTORY] loadTransactions called:', {
-      pageKey,
-      append,
-      userId,
-      currentTxCount: transactions.length
-    });
-
+  const loadActivity = useCallback(async () => {
     try {
-      // Set appropriate loading state
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoading(true);
-      }
-
-      const accessToken = await getAccessToken();
-      const result = await fetchTransactionHistory(userId, pageKey, 10, accessToken || undefined);
-
-      console.log('📊 [HISTORY] API result:', {
-        receivedTxCount: result.transactions?.length || 0,
-        hasNextPageKey: !!result.nextPageKey,
-        nextPageKeyValue: result.nextPageKey
-      });
-
-      if (append) {
-        // Append to existing transactions (infinite scroll)
-        setTransactions(prev => {
-          const newTxs = [...prev, ...(result.transactions || [])];
-          console.log('📝 [HISTORY] Appending transactions:', {
-            previousCount: prev.length,
-            newCount: newTxs.length
-          });
-          return newTxs;
-        });
-      } else {
-        // Replace transactions (initial load or refresh)
-        setTransactions(result.transactions || []);
-      }
-
-      setNextPageKey(result.nextPageKey || null);
-      console.log('✅ [HISTORY] nextPageKey updated to:', result.nextPageKey || 'null');
-
-    } catch (error) {
-      console.error("Failed to load transaction history:", error);
-      setAlertState({
-        visible: true,
-        title: "Error",
-        message: "Failed to load transaction history",
-        type: 'error'
-      });
+      setLoading(true);
+      const data = await getActivity();
+      setItems(data);
+    } catch (e) {
+      console.error("[History] Failed to load activity:", e);
     } finally {
-      if (append) {
-        setLoadingMore(false);
-      } else {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [currentUser?.userId, getAccessToken, transactions.length]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      const isTestFlight = isTestSessionActive();
-      const userId = isTestFlight ? TEST_ACCOUNTS.userId : currentUser?.userId;
-      console.log('History tab focused, userId:', userId);
-      setCurrentUserRef(userId || null);
-
-      // Auto-load transactions when tab becomes active
-      if (userId) {
-        loadTransactions();
-      }
-    }, [currentUser?.userId, loadTransactions])
+      loadActivity();
+    }, [loadActivity])
   );
 
-  useEffect(() => {
-    const isTestFlight = isTestSessionActive();
-    const userId = isTestFlight ? TEST_ACCOUNTS.userId : currentUser?.userId;
-    setCurrentUserRef(userId || null);
-
-    // Load transactions when user is available
-    if (userId) {
-      loadTransactions();
+  const openTx = (txHash?: string) => {
+    if (txHash) {
+      Linking.openURL(`https://basescan.org/tx/${txHash}`);
     }
-  }, [currentUser?.userId, loadTransactions]);
-
-
-  const handleRefresh = useCallback(() => {
-    loadTransactions(); // Call without parameters for refresh
-  }, [loadTransactions]);
-
-  const handleLoadMore = useCallback(() => {
-    console.log('🔄 [HISTORY] handleLoadMore triggered:', {
-      hasNextPageKey: !!nextPageKey,
-      nextPageKey,
-      loadingMore,
-      loading
-    });
-
-    if (nextPageKey && !loadingMore && !loading) {
-      console.log('✅ [HISTORY] Loading more transactions with pageKey:', nextPageKey);
-      loadTransactions(nextPageKey, true); // Append mode
-    } else {
-      console.log('⚠️ [HISTORY] Skipping load more - conditions not met');
-    }
-  }, [nextPageKey, loadingMore, loading, loadTransactions]);
-
-  const getStatusColor = (status: string) => {
-    const normalizedStatus = status.toLowerCase();
-    if (normalizedStatus.includes("completed") || normalizedStatus.includes("success")) {
-      return "#00D632"; // Green
-    }
-    if (normalizedStatus.includes("pending") || normalizedStatus.includes("processing")) {
-      return "#FF8500"; // Orange
-    }
-    if (normalizedStatus.includes("failed") || normalizedStatus.includes("error")) {
-      return "#FF6B6B"; // Red
-    }
-    return TEXT_SECONDARY; // Default gray
   };
 
-  const isFailedTransaction = (status: string) => {
-    const normalizedStatus = status.toLowerCase();
-    return normalizedStatus.includes("failed") || normalizedStatus.includes("error");
-  };
+  const renderItem = ({ item, index }: { item: ActivityItem; index: number }) => {
+    const isFund = item.type === "fund";
+    const isSend = item.type === "send";
+    const isPending = item.status === "pending";
+    const isFailed = item.status === "failed";
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+    const avatarBg = isFund ? Paper.colors.successLight : Paper.colors.orangeLight;
+    const avatarText = isFund
+      ? "↓"
+      : (item.recipientName?.[0] ?? "?").toUpperCase();
+    const avatarColor = isFund ? Paper.colors.success : Paper.colors.orange;
 
-  const renderTransaction = ({ item }: { item: Transaction }) => {
-    const isFailed = isFailedTransaction(item.status);
+    const label = isFund
+      ? "Funded via Apple Pay"
+      : `Sent to ${item.recipientName || truncateAddress(item.recipientAddress || "")}`;
+
+    const amountPrefix = isFund ? "+" : "−";
+    const amountColor = isFund ? Paper.colors.success : Paper.colors.navy;
 
     return (
-      <View style={styles.transactionItem}>
-        <View style={[styles.transactionIcon, isFailed && styles.transactionIconFailed]}>
-          <Ionicons
-            name={isFailed ? "alert-circle" : "swap-horizontal"}
-            size={16}
-            color={isFailed ? "#FF6B6B" : WHITE}
-          />
-        </View>
-        <View style={styles.transactionContent}>
-          {/* First row: Title and Amount */}
-          <View style={styles.transactionRow}>
-            <Text style={styles.transactionTitle}>
-              {item.purchase_currency} Purchase
-            </Text>
-            <Text style={styles.transactionAmount}>
-              ${item.payment_total.value}
-            </Text>
-          </View>
-
-          {/* Second row: Network/Date and Status */}
-          <View style={styles.transactionRow}>
-            <Text style={styles.transactionSubtitle}>
-              {item.purchase_network} • {formatDate(item.created_at)}
-            </Text>
-            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-              {item.status.replace(/ONRAMP_TRANSACTION_STATUS_/g, '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
-            </Text>
-          </View>
-
-          {/* Show support badge for failed transactions */}
-          {isFailed && (
-            <View style={styles.supportBadgeRow}>
-              <FailedTransactionBadge transaction={item} />
+      <Animated.View
+        entering={FadeInDown.delay(index * 50).springify().damping(20).stiffness(220)}
+      >
+        <AnimatedPressable onPress={() => openTx(item.txHash)} haptic="light">
+          <View style={styles.row}>
+            <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
+              <Text style={[styles.avatarText, { color: avatarColor }]}>
+                {avatarText}
+              </Text>
             </View>
-          )}
+
+            <View style={styles.center}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label} numberOfLines={1}>
+                  {label}
+                </Text>
+                {isPending && <View style={styles.pendingDot} />}
+                {isFailed && <View style={styles.failedDot} />}
+              </View>
+              <Text style={styles.time}>{formatTimeAgo(item.timestamp)}</Text>
+            </View>
+
+            <Text style={[styles.amount, { color: amountColor }]}>
+              {amountPrefix}${item.amountUsd}
+            </Text>
+          </View>
+        </AnimatedPressable>
+        <View style={styles.separator} />
+      </Animated.View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Activity</Text>
+        </View>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={Paper.colors.orange} />
         </View>
       </View>
     );
-  };
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Onramp Transaction History</Text>
-        <Pressable
-          onPress={handleRefresh}
-          disabled={loading}
-          style={({ pressed }) => [
-            styles.refreshButton,
-            pressed && { opacity: 0.7 },
-            loading && { opacity: 0.5 },
-          ]}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color={BLUE} />
-          ) : (
-            <Ionicons name="refresh" size={20} color={BLUE} />
-          )}
-        </Pressable>
+        <Text style={styles.title}>Activity</Text>
       </View>
 
-      <View style={styles.userRefSection}>
-        <Text style={styles.userRefLabel}>User ID:</Text>
-        <Text style={styles.userRefValue}>
-          {currentUserRef || "Loading..."}
-        </Text>
-      </View>
-
-      {transactions.length === 0 ? (
+      {items.length === 0 ? (
         <View style={styles.emptyState}>
-          <Ionicons name="time-outline" size={64} color={TEXT_SECONDARY} />
-          <Text style={styles.emptyTitle}>No Transactions Yet</Text>
+          <View style={styles.emptyIcon}>
+            <Text style={styles.emptyIconText}>📋</Text>
+          </View>
+          <Text style={styles.emptyTitle}>No activity yet</Text>
           <Text style={styles.emptyMessage}>
-            {currentUserRef
-              ? "Your transaction history will appear here after completing an onramp purchase"
-              : "Sign in to view your transaction history"}
+            Fund your wallet to get started
           </Text>
         </View>
       ) : (
-          <FlatList
-            data={transactions}
-            renderItem={renderTransaction}
-            keyExtractor={(item) => item.transaction_id}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={() =>
-              loadingMore ? (
-                <View style={styles.footerLoader}>
-                  <ActivityIndicator size="small" color={BLUE} />
-                  <Text style={styles.footerText}>Loading more...</Text>
-                </View>
-              ) : nextPageKey ? (
-                <View style={styles.footerLoader}>
-                  <Text style={styles.footerText}>Scroll to load more</Text>
-                </View>
-              ) : transactions.length > 0 ? (
-                <View style={styles.footerLoader}>
-                  <Text style={styles.footerText}>No more transactions</Text>
-                </View>
-              ) : null
-            }
-          />
-        )}
-          <CoinbaseAlert
-            visible={alertState.visible}
-            title={alertState.title}
-            message={alertState.message}
-            type={alertState.type}
-            onConfirm={() => setAlertState(prev => ({ ...prev, visible: false }))}
-          />
+        <FlatList
+          data={items}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+        />
+      )}
     </View>
   );
 }
@@ -328,273 +143,109 @@ export default function History() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,    
+    backgroundColor: Paper.colors.background,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: CARD_BG,    
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
   title: {
-    fontSize: 20,
+    fontSize: 26,
+    fontWeight: "700",
+    color: Paper.colors.navy,
+  },
+  loadingWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  center: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  label: {
+    fontSize: 15,
     fontWeight: "600",
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
+    flexShrink: 1,
   },
-  refreshButton: {
-    // secondary button style
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,                 
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    
-    // Subtle shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+  pendingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Paper.colors.orange,
+    marginLeft: 8,
   },
-  userRefSection: {
-    backgroundColor: CARD_BG,
-    marginHorizontal: 20,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
+  failedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Paper.colors.error,
+    marginLeft: 8,
   },
-  userRefLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: TEXT_SECONDARY,
-    marginBottom: 4,
-  },
-  userRefValue: {
+  time: {
     fontSize: 12,
-    fontFamily: "monospace",
-    color: TEXT_PRIMARY,
-    backgroundColor: DARK_BG,
-    padding: 8,
-    borderRadius: 6,
-  },
-  listContainer: {
-    padding: 20,
-  },
-  transactionItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    backgroundColor: 'transparent',
-  },
-  transactionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: CARD_BG, // Neutral background
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    color: Paper.colors.sand,
     marginTop: 2,
   },
-  transactionIconFailed: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
-  },
-  supportBadgeRow: {
-    marginTop: 8,
-    alignItems: 'flex-start',
-  },
-  transactionAmount: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TEXT_PRIMARY, // Neutral white text
-    textAlign: 'right',
-  },
-  transactionContent: {
-    flex: 1,
-    gap: 6, // Space between the two rows
-  },
-  transactionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  transactionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TEXT_PRIMARY,
-    flex: 1, // Take up available space
-  },
-  transactionSubtitle: {
-    fontSize: 14,
-    color: TEXT_SECONDARY,
-    flex: 1, // Take up available space
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '500',
-    textAlign: 'right',
-    paddingLeft: 8, // Small padding to separate from subtitle
+  amount: {
+    fontSize: 15,
+    fontWeight: "700",
   },
   separator: {
-    height: 1,
-    backgroundColor: BORDER,
-    marginLeft: 68,
-  },
-  transactionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  transactionDate: {
-    fontSize: 12,
-    color: TEXT_SECONDARY,
-    marginBottom: 4,
-  },
-  transactionId: {
-    fontSize: 10,
-    fontFamily: "monospace",
-    color: TEXT_SECONDARY,
-  },
-  transactionHash: {
-    fontSize: 10,
-    fontFamily: "monospace",
-    color: TEXT_SECONDARY,
-    marginTop: 2,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Paper.colors.borderLight,
+    marginLeft: 78,
   },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Paper.colors.surface,
+    borderWidth: 1,
+    borderColor: Paper.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyIconText: {
+    fontSize: 28,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
-    color: TEXT_PRIMARY,
-    marginTop: 16,
-    marginBottom: 8,
+    color: Paper.colors.navy,
   },
   emptyMessage: {
-    fontSize: 14,
-    color: TEXT_SECONDARY,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  paginationButton: {
-    backgroundColor: BLUE,            
-    paddingHorizontal: 20,            
-    paddingVertical: 12,
-    borderRadius: 20,               
-    minWidth: 80,
-    alignItems: 'center',
-    
-    // Coinbase shadow
-    shadowColor: BLUE,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  paginationButtonDisabled: {
-    backgroundColor: BORDER,           // Gray when disabled
-    shadowOpacity: 0,                 // No shadow when disabled
-    elevation: 0,
-  },
-  paginationText: {
-    color: WHITE,
-    fontSize: 14,
-    fontWeight: '600',                // Semibold
-    textAlign: 'center',
-  },
-  paginationTextDisabled: {
-    color: TEXT_SECONDARY,
-  },
-  pageNumber: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  pageIndicator: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  transactionInfo: {
-    flex: 1,
-  },
-  transactionMeta: {
-    alignItems: "flex-end",
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: DARK_BG,
-    gap: 16,
-  },
-  paginationArrow: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: CARD_BG,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  paginationArrowDisabled: {
-    opacity: 0.3,
-  },
-  pageNumbers: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  currentPageNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: BLUE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  currentPageText: {
-    color: WHITE,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pageNumbersText: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
-  },
-  footerLoader: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: TEXT_SECONDARY,
-    textAlign: 'center',
+    fontSize: 13,
+    color: Paper.colors.sand,
+    marginTop: 4,
   },
 });

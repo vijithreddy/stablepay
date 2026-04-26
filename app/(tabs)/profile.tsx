@@ -7,8 +7,6 @@
  * 1. Wallet connection & export
  * 2. Phone verification management
  * 3. Region selection (country/subdivision)
- * 4. Sandbox/Production mode toggle
- * 5. Manual address input (sandbox only)
  *
  * WALLET EXPORT FLOW:
  *
@@ -60,18 +58,6 @@
  * - Required for compliance (state regulations vary)
  * - Auto-sets to "CA" if US selected without subdivision
  *
- * SANDBOX MODE (Not Persisted):
- *
- * Intentionally resets on app restart for safety:
- * - Toggle ON: Manual address input appears, mock phone accepted
- * - Toggle OFF: Production warnings shown, real transactions
- * - Affects validation, phone requirements, address priority
- *
- * Why not persisted?
- * - Prevent accidental real transactions thinking it's sandbox
- * - Forces user to consciously enable sandbox each session
- * - Production mode is the safe default
- *
  * @see utils/sharedState.ts for address priority system
  * @see app/phone-verify.tsx for phone verification flow
  * @see hooks/useOnramp.ts for how region affects options
@@ -94,14 +80,13 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 import { CoinbaseAlert } from "../../components/ui/CoinbaseAlerts";
 import { BASE_URL } from "../../constants/BASE_URL";
-import { COLORS } from "../../constants/Colors";
+import { Paper } from "../../constants/PaperTheme";
+import Wordmark from "../../components/ui/Wordmark";
 import { TEST_ACCOUNTS } from "../../constants/TestAccounts";
 import { debugSecureStoreSession } from "../../utils/debugSession";
-import { clearManualAddress, clearTestSession, daysUntilExpiry, forceUnverifyPhone, formatPhoneDisplay, getLifetimeTransactionThreshold, getManualWalletAddress, getSandboxMode, getVerifiedPhone, getVerifiedPhoneUserId, isPhoneFresh60d, isTestSessionActive, setCountry, setCurrentWalletAddress, setLifetimeTransactionThreshold, setManualWalletAddress, setSandboxMode, setSubdivision, setVerifiedPhone, setPendingOfframpBalance } from "../../utils/sharedState";
+import { clearTestSession, daysUntilExpiry, forceUnverifyPhone, formatPhoneDisplay, getLifetimeTransactionThreshold, getVerifiedPhone, getVerifiedPhoneUserId, isPhoneFresh60d, isTestSessionActive, setCountry, setCurrentWalletAddress, setLifetimeTransactionThreshold, setManualWalletAddress, setSubdivision, setVerifiedPhone, setPendingOfframpBalance } from "../../utils/sharedState";
 import { createOfframpSession } from "../../utils/createOfframpSession";
 import * as WebBrowser from 'expo-web-browser';
-
-const { CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BLUE, BORDER, WHITE, VIOLET, ORANGE } = COLORS;
 
 export default function WalletScreen() {
   // Check for test session first
@@ -205,11 +190,6 @@ export default function WalletScreen() {
   }, [currentUser]);
 
 
-  const [productionSwitchAlertVisible, setProductionSwitchAlertVisible] = useState(false); 
-
-  const sandboxEnabled = getSandboxMode();
-  const [localSandboxEnabled, setLocalSandboxEnabled] = useState(getSandboxMode());
-  const [manualAddress, setManualAddress] = useState('');
   const [lifetimeTxThreshold, setLifetimeTxThresholdLocal] = useState(getLifetimeTransactionThreshold());
 
   // Balance state
@@ -223,27 +203,6 @@ export default function WalletScreen() {
   const [loadingTestnetBalances, setLoadingTestnetBalances] = useState(false);
   const [testnetBalancesError, setTestnetBalancesError] = useState<string | null>(null);
   const [testnetBalancesExpanded, setTestnetBalancesExpanded] = useState(false);
-
-  // sync local state with shared state on mount
-  useEffect(() => {
-    setLocalSandboxEnabled(getSandboxMode());
-    // Load manual address if in sandbox mode
-    const stored = getManualWalletAddress();
-    if (sandboxEnabled && stored) {
-      setManualAddress(stored);
-    }
-  }, [sandboxEnabled]);
-
-  // Save manual address to shared state when changed
-  useEffect(() => {
-    if (localSandboxEnabled) {
-      // In sandbox mode, save manual address (can be empty string or actual address)
-      setManualWalletAddress(manualAddress || null);
-    } else {
-      // In production mode, always clear manual address
-      setManualWalletAddress(null);
-    }
-  }, [manualAddress, localSandboxEnabled]);
 
   // Save lifetime transaction threshold when changed
   useEffect(() => {
@@ -509,9 +468,6 @@ export default function WalletScreen() {
       setCountry('US'); // Reset to default
       setSubdivision('CA'); // Reset to default
 
-      // CRITICAL: Reset sandbox mode to ON for safety (prevents accidental real transactions)
-      setSandboxMode(true);
-
       // Navigate to login screen
       router.replace('/auth/login');
     }
@@ -522,6 +478,7 @@ export default function WalletScreen() {
   const isExpoGo = process.env.EXPO_PUBLIC_USE_EXPO_CRYPTO === 'true';
 
   const [showWalletChoice, setShowWalletChoice] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleRequestExport = () => {
     if (!effectiveIsSignedIn || !evmWalletAddress) return;
@@ -626,1290 +583,202 @@ export default function WalletScreen() {
 
   if (!isInitialized) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={BLUE} />
-        <Text style={styles.loadingText}>Initializing wallet...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Paper.colors.orange} />
+        <Text style={styles.loadingText}>Setting up StablePay...</Text>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView
-          style={{ flex: 1, backgroundColor: CARD_BG }}
-          contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 40 }}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          bounces={true}
-          overScrollMode="always"
-          showsVerticalScrollIndicator={true}
-        >
-          <View style={styles.container}>
-            {/* Account card */}
-            <View style={styles.card}>
-              <Text style={styles.rowLabel}>Embedded wallet</Text>
-
-              {signedButNoSA ? (
-                <View style={styles.subContainer}>
-                  <View style={styles.subBox}>
-                    <Text style={styles.subValue}>Wallet creation in progress</Text>
-                    <Text style={styles.subHint}>
-                      {isExpoGo
-                        ? "Wallet creation is limited in Expo Go. Please use an email address that has been verified for embedded wallet creation previously, or use a development build/TestFlight to create new wallets."
-                        : "Please wait while your embedded wallet is being created. This may take a few moments."}
-                    </Text>
-                  </View>
-
-                  <Pressable style={[styles.buttonSecondary]} onPress={handleSignOut}>
-                    <Text style={styles.buttonTextSecondary}>Sign out</Text>
-                  </Pressable>
-                </View>
-              ) : !effectiveIsSignedIn ? (
-                <View style={styles.subContainer}>
-                  <View style={styles.subBox}>
-                    <Text style={styles.subValue}>No wallet connected</Text>
-                    <Text style={styles.subHint}>Sign in with email to create your embedded wallet</Text>
-                  </View>
-                  <Pressable
-                    style={[styles.button]}
-                    onPress={() => router.push('/email-verify')}
-                  >
-                    <Text style={styles.buttonText}>Connect wallet</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={styles.subContainer}>
-                  <View style={styles.subBox}>
-                    <Text style={styles.subHint}>Email address {testSession && '(TestFlight)'}</Text>
-                    <Text style={styles.subValue}>{displayEmail}</Text>
-                  </View>
-
-                  {/* Link Email Button (show if user signed in with phone only) */}
-                  {!currentUser?.authenticationMethods.email?.email && !testSession && (
-                    <Pressable style={styles.button} onPress={openEmailLink}>
-                      <Text style={styles.buttonText}>Link Email</Text>
-                    </Pressable>
-                  )}
-
-                  {/* Phone Number Section */}
-                  <View style={styles.subBox}>
-                    <Text style={styles.subHint}>Phone number {testSession && '(TestFlight)'}</Text>
-                    <Text style={styles.subValue}>
-                      {(() => {
-                        // Use test phone for TestFlight, real phone for production
-                        const cdpPhone = testSession
-                          ? TEST_ACCOUNTS.phone
-                          : currentUser?.authenticationMethods?.sms?.phoneNumber;
-
-                        if (!cdpPhone) return 'No phone linked';
-
-                        const cdpPhoneFormatted = formatPhoneDisplay(cdpPhone);
-                        const isUSPhone = cdpPhone.startsWith('+1');
-
-                        // Check if CDP phone matches verified phone and is fresh
-                        const isVerified = verifiedPhone === cdpPhone && phoneFresh;
-                        const isExpired = verifiedPhone === cdpPhone && !phoneFresh;
-
-                        // All phones: Show expiration status (same flow for US and non-US)
-                        if (isVerified) return cdpPhoneFormatted;
-                        if (isExpired) return `${cdpPhoneFormatted} (expired)`;
-                        return `${cdpPhoneFormatted} (needs verification)`;
-                      })()}
-                    </Text>
-                    {(() => {
-                      // Use test phone for TestFlight, real phone for production
-                      const cdpPhone = testSession
-                        ? TEST_ACCOUNTS.phone
-                        : currentUser?.authenticationMethods?.sms?.phoneNumber;
-                      if (!cdpPhone) return null;
-
-                      const isVerified = verifiedPhone === cdpPhone && phoneFresh;
-                      const isExpired = verifiedPhone === cdpPhone && !phoneFresh;
-                      const isUSPhone = cdpPhone.startsWith('+1');
-
-                      // All phones: Same flow, but non-US shows disclaimer
-                      if (isVerified) {
-                        return (
-                          <Text style={styles.subHint}>
-                            {isUSPhone
-                              ? `Verified for Apple Pay • expires in ${d} day${d===1?'':'s'}`
-                              : `Verified • expires in ${d} day${d===1?'':'s'} • Not eligible for Apple Pay (non-US)`
-                            }
-                          </Text>
-                        );
-                      } else if (isExpired) {
-                        return (
-                          <Text style={styles.subHint}>
-                            {isUSPhone
-                              ? 'Verification expired • Re-verify below for Apple Pay'
-                              : 'Verification expired • Re-verify below (not eligible for Apple Pay)'
-                            }
-                          </Text>
-                        );
-                      } else {
-                        return (
-                          <Text style={styles.subHint}>
-                            {isUSPhone
-                              ? 'Linked to account • Verify below to use with Apple Pay'
-                              : 'Linked to account • Verify below (not eligible for Apple Pay)'
-                            }
-                          </Text>
-                        );
-                      }
-                    })()}
-                  </View>
-
-                  {/* Phone Link/Verify Buttons */}
-                  {(() => {
-                    // Use test phone for TestFlight, real phone for production
-                    const cdpPhone = testSession
-                      ? TEST_ACCOUNTS.phone
-                      : currentUser?.authenticationMethods?.sms?.phoneNumber;
-
-                    // For test sessions, always show verify button if not verified
-                    if (testSession) {
-                      const isVerified = verifiedPhone === cdpPhone && phoneFresh;
-                      if (isVerified) return null; // Already verified
-
-                      return (
-                        <Pressable style={styles.button} onPress={openPhoneVerify}>
-                          <Text style={styles.buttonText}>Verify Test Phone</Text>
-                        </Pressable>
-                      );
-                    }
-
-                    // No phone in CDP → Link Phone
-                    if (!cdpPhone) {
-                      return (
-                        <Pressable style={styles.button} onPress={openPhoneVerify}>
-                          <Text style={styles.buttonText}>Link Phone</Text>
-                        </Pressable>
-                      );
-                    }
-
-                    const isVerified = verifiedPhone === cdpPhone && phoneFresh;
-
-                    // All phones: Same flow - if verified and fresh, no button needed
-                    if (isVerified) {
-                      return null;
-                    }
-
-                    // Has CDP phone but not verified or expired → Show verify/re-verify
-                    const isExpired = verifiedPhone === cdpPhone && !phoneFresh;
-                    return (
-                      <Pressable style={styles.button} onPress={openPhoneVerify}>
-                        <Text style={styles.buttonText}>
-                          {isExpired ? 'Re-verify phone' : 'Verify phone'}
-                        </Text>
-                      </Pressable>
-                    );
-                  })()}
-
-                  {/* Developer Tool: Force Unverify Phone */}
-                  {(() => {
-                    // Use test phone for TestFlight, real phone for production
-                    const cdpPhone = testSession
-                      ? TEST_ACCOUNTS.phone
-                      : currentUser?.authenticationMethods?.sms?.phoneNumber;
-                    const isVerified = verifiedPhone === cdpPhone && phoneFresh;
-
-                    // Only show if phone is currently verified (for testing re-verification flow)
-                    if (!isVerified) return null;
-
-                    return (
-                      <Pressable
-                        style={[styles.button, { backgroundColor: ORANGE, marginTop: 0 }]}
-                        onPress={async () => {
-                          await forceUnverifyPhone();
-                          // Update local state immediately
-                          setVerifiedPhoneLocal(null);
-                          setPhoneFresh(false);
-                          setPhoneExpiry(-1);
-                          setAlertState({
-                            visible: true,
-                            title: "Phone Unverified",
-                            message: "Phone verification has been cleared. You can now test the re-verification flow.",
-                            type: "info"
-                          });
-                        }}
-                      >
-                        <Text style={styles.buttonText}>🔧 Force Unverify Phone (Dev)</Text>
-                      </Pressable>
-                    );
-                  })()}
-
-                  {smartAccountAddress && (
-                    <View style={[styles.subBox, { flexDirection: 'row', alignItems: 'center' }]}>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.subHint}>EVM Smart Account Address (used for transactions)</Text>
-                        <Text
-                          selectable
-                          style={styles.subValue}
-                          numberOfLines={1}
-                          ellipsizeMode="middle"
-                        >
-                          {smartAccountAddress}
-                        </Text>
-                      </View>
-                  <Pressable
-                        onPress={async () => {
-                          await Clipboard.setStringAsync(smartAccountAddress || '');
-                          setAlertState({
-                            visible: true,
-                            title: "Address copied",
-                            message: "Smart Account address copied to clipboard",
-                            type: "info",
-                          });
-                        }}
-                        style={styles.copyButton}
-                      >
-                        <Ionicons name="copy-outline" size={20} color={BLUE} />
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {/* EOA wallet section removed -- Smart Account only */}
-
-                  <Pressable
-                    style={[
-                      styles.button,
-                      { backgroundColor: '#DC2626' },
-                      (isExpoGo || !evmWalletAddress || exporting) && styles.buttonDisabled
-                    ]}
-                    onPress={handleRequestExport}
-                    disabled={!evmWalletAddress || exporting}
-                  >
-                    <Text style={styles.buttonText}>
-                      {exporting ? "Exporting..." : isExpoGo ? "Export unavailable (Expo Go)" : "Export private key"}
-                    </Text>
-                  </Pressable>
-
-                  <Pressable style={[styles.buttonSecondary]} onPress={handleSignOut}>
-                    <Text style={styles.buttonTextSecondary}>Sign out</Text>
-                  </Pressable>
-
-                  {/* Support Demo Button - Full support flow demonstration */}
-                  <Pressable
-                    style={[styles.button, { backgroundColor: ORANGE }]}
-                    onPress={() => router.push('/support')}
-                  >
-                    <Ionicons name="help-circle" size={16} color={WHITE} style={{ marginRight: 8 }} />
-                    <Text style={styles.buttonText}>Support Demo</Text>
-                  </Pressable>
-
-                  {/* Debug Session Button - for TestFlight debugging
-                  <Pressable
-                    style={[styles.button, { backgroundColor: ORANGE }]}
-                    onPress={handleDebugSession}
-                    disabled={debuggingSession}
-                  >
-                    {debuggingSession ? (
-                      <ActivityIndicator color={WHITE} size="small" />
-                    ) : (
-                      <>
-                        <Ionicons name="bug" size={16} color={WHITE} style={{ marginRight: 8 }} />
-                        <Text style={styles.buttonText}>Debug Session Storage</Text>
-                      </>
-                    )}
-                  </Pressable>
-                  */}
-                </View>
-              )}
-            </View>
-            {/* Wallet Balances - show when wallet is connected */}
-            {effectiveIsSignedIn && primaryAddress && (
-              <View style={styles.card}>
-                <Pressable
-                  onPress={() => setBalancesExpanded(!balancesExpanded)}
-                  style={styles.row}
-                >
-                  <Text style={styles.rowLabel}>Wallet Balances</Text>
-                  <Ionicons
-                    name={balancesExpanded ? "chevron-up" : "chevron-down"}
-                    size={20}
-                    color={TEXT_SECONDARY}
-                  />
-                </Pressable>
-
-                <Text style={styles.helper}>
-                  Showing balances for Base mainnet
-                </Text>
-
-                {balancesExpanded && (
-                  <>
-                    {loadingBalances && (
-                      <View style={{ marginTop: 16, alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={BLUE} />
-                        <Text style={[styles.subHint, { marginTop: 8 }]}>Loading balances...</Text>
-                      </View>
-                    )}
-
-                    {balancesError && (
-                      <View style={{ marginTop: 16 }}>
-                        <Text style={[styles.helper, { color: '#FF6B6B' }]}>{balancesError}</Text>
-                        <Pressable style={[styles.button, { marginTop: 8 }]} onPress={fetchBalances}>
-                          <Text style={styles.buttonText}>Retry</Text>
-                          </Pressable>
-                      </View>
-                    )}
-
-                    {!loadingBalances && !balancesError && balances.length === 0 && (
-                      <View style={{ marginTop: 16 }}>
-                        <Text style={[styles.subHint, { textAlign: 'center' }]}>
-                          No tokens found. Purchase crypto to see your balances.
-                        </Text>
-                        <Pressable style={[styles.button, { marginTop: 12 }]} onPress={fetchBalances}>
-                          <Text style={styles.buttonText}>Refresh Balances</Text>
-                        </Pressable>
-                      </View>
-                    )}
-
-                    {!loadingBalances && !balancesError && (
-                      <View style={{ marginTop: 16 }}>
-                        {/* Group balances by network */}
-                        {['Base'].map(networkName => {
-                          const networkBalances = balances.filter(b => b.network === networkName);
-
-                          return (
-                            <View key={networkName} style={{ marginBottom: 20 }}>
-                              <View style={styles.networkHeader}>
-                                <Text style={styles.networkTitle}>{networkName}</Text>
-                              </View>
-                              {networkBalances.length === 0 ? (
-                                <Text style={[styles.subHint, { paddingVertical: 12 }]}>No tokens</Text>
-                              ) : (
-                                networkBalances.map((balance, index) => {
-                                const symbol = balance.token?.symbol || 'UNKNOWN';
-                                const amount = parseFloat(balance.amount?.amount || '0');
-                                const decimals = parseInt(balance.amount?.decimals || '0');
-                                const actualAmount = amount / Math.pow(10, decimals);
-                                const formattedAmount = actualAmount.toFixed(6);
-                                const usdValue = balance.usdValue;
-                                const network = balance.network;
-
-                                return (
-                                  <View
-                                    key={`${balance.token?.contractAddress || balance.token?.mintAddress}-${index}`}
-                                    style={[
-                                      styles.tokenRow,
-                                      index < networkBalances.length - 1 && { borderBottomWidth: 1, borderBottomColor: BORDER }
-                                    ]}
-                                  >
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={styles.tokenSymbol}>{symbol}</Text>
-                                      {balance.token?.name && (
-                                        <Text style={styles.tokenName}>{balance.token.name}</Text>
-                                      )}
-                                    </View>
-
-                                    <View style={{ alignItems: 'flex-end' }}>
-                                      <Text style={styles.tokenAmount}>{formattedAmount}</Text>
-                                      {usdValue ? (
-                                        <Text style={styles.tokenUsd}>${usdValue.toFixed(2)}</Text>
-                                      ) : (
-                                        <Text style={styles.tokenUsd}>Price N/A</Text>
-                                      )}
-                                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                                        <Pressable
-                                          style={[
-                                            styles.button,
-                                            { paddingVertical: 6, paddingHorizontal: 12 },
-                                            isExpoGo && styles.buttonDisabled
-                                          ]}
-                                          onPress={() => {
-                                            if (isExpoGo) {
-                                              setAlertState({
-                                                visible: true,
-                                                title: "Transfer not available",
-                                                message: "Crypto transfers are not available in Expo Go due to missing crypto.subtle package. Please use TestFlight or a development build.",
-                                                type: "info",
-                                              });
-                                              return;
-                                            }
-                                            router.push({
-                                              pathname: '/transfer',
-                                              params: {
-                                                token: JSON.stringify(balance),
-                                                network: network.toLowerCase()
-                                              }
-                                            });
-                                          }}
-                                          disabled={isExpoGo}
-                                        >
-                                          <Text style={[styles.buttonText, { fontSize: 12 }]}>
-                                            {isExpoGo ? "Transfer (Expo Go)" : "Transfer"}
-                                          </Text>
-                                        </Pressable>
-                                        <Pressable
-                                          style={[
-                                            styles.button,
-                                            { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#1a472a' },
-                                            isExpoGo && styles.buttonDisabled
-                                          ]}
-                                          onPress={async () => {
-                                            if (isExpoGo) {
-                                              setAlertState({
-                                                visible: true,
-                                                title: "Cash Out not available",
-                                                message: "Offramp is not available in Expo Go. Please use TestFlight or a development build.",
-                                                type: "info",
-                                              });
-                                              return;
-                                            }
-                                            try {
-                                              const userId = currentUser?.userId;
-                                              if (!userId) throw new Error('User not signed in');
-
-                                              const address = primaryAddress;
-                                              if (!address) throw new Error('No wallet address found');
-
-                                              // Store balance so offramp-send can access decimals/contract info
-                                              setPendingOfframpBalance(balance);
-
-                                              const url = await createOfframpSession({
-                                                address,
-                                                network,
-                                                asset: symbol,
-                                                userId,
-                                              });
-
-                                              // openAuthSessionAsync uses SFSafariViewController on iOS,
-                                              // which intercepts the onrampdemo:// redirect internally
-                                              // without showing the "Open in app?" dialog that breaks
-                                              // the Coinbase sell flow when using Linking.openURL.
-                                              const result = await WebBrowser.openAuthSessionAsync(
-                                                url,
-                                                'onrampdemo://'
-                                              );
-
-                                              if (result.type === 'success' && result.url) {
-                                                // Extract partnerUserRef from the redirect URL
-                                                const redirected = new URL(result.url);
-                                                const ref = redirected.searchParams.get('partnerUserRef') || userId;
-                                                router.push({
-                                                  pathname: '/offramp-send',
-                                                  params: { partnerUserRef: ref },
-                                                });
-                                              }
-                                            } catch (err: any) {
-                                              setAlertState({
-                                                visible: true,
-                                                title: "Cash Out Failed",
-                                                message: err.message || "Failed to start offramp session.",
-                                                type: "error",
-                                              });
-                                            }
-                                          }}
-                                          disabled={isExpoGo}
-                                        >
-                                          <Text style={[styles.buttonText, { fontSize: 12, color: '#4ADE80' }]}>
-                                            {isExpoGo ? "Cash Out (Expo Go)" : "Cash Out (Offramp)"}
-                                          </Text>
-                                        </Pressable>
-                                      </View>
-                                    </View>
-                                  </View>
-                                );
-                              })
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-
-            {/* Testnet Balances - show when wallet is connected */}
-            {effectiveIsSignedIn && primaryAddress && (
-              <View style={styles.card}>
-                      <Pressable
-                  onPress={() => setTestnetBalancesExpanded(!testnetBalancesExpanded)}
-                  style={styles.row}
-                >
-                  <Text style={styles.rowLabel}>🧪 Testnet Balances</Text>
-                  <Ionicons
-                    name={testnetBalancesExpanded ? "chevron-up" : "chevron-down"}
-                    size={20}
-                    color={TEXT_SECONDARY}
-                  />
-                </Pressable>
-
-                <Text style={styles.helper}>
-                  Showing balances for Base Sepolia
-                </Text>
-
-                {testnetBalancesExpanded && (
-                  <>
-                    {loadingTestnetBalances && (
-                      <View style={{ marginTop: 16, alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={BLUE} />
-                        <Text style={[styles.subHint, { marginTop: 8 }]}>Loading testnet balances...</Text>
-                      </View>
-                    )}
-
-                    {testnetBalancesError && (
-                      <View style={{ marginTop: 16 }}>
-                        <Text style={[styles.helper, { color: '#FF6B6B' }]}>{testnetBalancesError}</Text>
-                        <Pressable style={[styles.button, { marginTop: 8 }]} onPress={fetchTestnetBalances}>
-                          <Text style={styles.buttonText}>Retry</Text>
-                        </Pressable>
-                      </View>
-                    )}
-
-                    {!loadingTestnetBalances && !testnetBalancesError && testnetBalances.length === 0 && (
-                      <View style={{ marginTop: 16 }}>
-                        <Text style={[styles.subHint, { textAlign: 'center', marginBottom: 12 }]}>
-                          No testnet tokens found. Get free testnet tokens from the faucets below.
-                        </Text>
-
-                        {/* Faucet buttons */}
-                        <View style={{ gap: 8 }}>
-                          {primaryAddress && (
-                            <>
-                              <Pressable
-                                style={[styles.button, { backgroundColor: VIOLET }]}
-                                onPress={() => {
-                                  const faucetUrl = `https://portal.cdp.coinbase.com/products/faucet?address=${primaryAddress}&network=base-sepolia`;
-                                  Linking.openURL(faucetUrl);
-                                }}
-                              >
-                                <Ionicons name="water-outline" size={16} color={WHITE} style={{ marginRight: 8 }} />
-                                <Text style={styles.buttonText}>Get Base Sepolia ETH</Text>
-                              </Pressable>
-
-                    </>
-                  )}
-
-                </View>
-
-                        <Pressable style={[styles.button, { marginTop: 12 }]} onPress={fetchTestnetBalances}>
-                          <Text style={styles.buttonText}>Refresh Testnet Balances</Text>
-                  </Pressable>
-                      </View>
-                    )}
-
-                    {!loadingTestnetBalances && !testnetBalancesError && (
-                      <View style={{ marginTop: 16 }}>
-                        {/* Group balances by network */}
-                        {['Base Sepolia'].map(networkName => {
-                          const networkBalances = testnetBalances.filter(b => b.network === networkName);
-
-                          return (
-                            <View key={networkName} style={{ marginBottom: 24 }}>
-                              {/* Network header */}
-                              <View style={styles.networkHeader}>
-                                <Text style={styles.networkTitle}>{networkName}</Text>
-                                {/* Faucet button per network */}
-                  <Pressable
-                                  style={styles.faucetIconButton}
-                                  onPress={() => {
-                                    const networkParam = networkName === 'Base Sepolia' ? 'base-sepolia' : 'base-sepolia';
-                                    const faucetUrl = `https://portal.cdp.coinbase.com/products/faucet?address=${primaryAddress}&network=${networkParam}`;
-                                    Linking.openURL(faucetUrl);
-                                  }}
-                                >
-                                  <Ionicons name="water-outline" size={18} color={VIOLET} />
-                  </Pressable>
-                              </View>
-
-                              {/* Tokens for this network */}
-                              {networkBalances.length === 0 ? (
-                                <Text style={[styles.subHint, { paddingVertical: 12 }]}>No tokens - use faucet above</Text>
-                              ) : (
-                                networkBalances.map((balance, index) => {
-                                const symbol = balance.token?.symbol || 'UNKNOWN';
-                                const amount = parseFloat(balance.amount?.amount || '0');
-                                const decimals = parseInt(balance.amount?.decimals || '0');
-                                const actualAmount = amount / Math.pow(10, decimals);
-                                const formattedAmount = actualAmount.toFixed(6);
-                                const usdValue = balance.usdValue;
-
-                                return (
-                                  <View
-                                    key={`${balance.token?.contractAddress || balance.token?.mintAddress}-${index}`}
-                                    style={[
-                                      styles.tokenRow,
-                                      index < networkBalances.length - 1 && { borderBottomWidth: 1, borderBottomColor: BORDER }
-                                    ]}
-                                  >
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={styles.tokenSymbol}>{symbol}</Text>
-                                      {balance.token?.name && (
-                                        <Text style={styles.tokenName}>{balance.token.name}</Text>
-                                      )}
-                                    </View>
-
-                                    <View style={{ alignItems: 'flex-end' }}>
-                                      <Text style={styles.tokenAmount}>{formattedAmount}</Text>
-                                      {usdValue ? (
-                                        <Text style={styles.tokenUsd}>${usdValue.toFixed(2)}</Text>
-                                      ) : (
-                                        <Text style={styles.tokenUsd}>Testnet</Text>
-                                      )}
-                  <Pressable
-                                        style={[
-                                          styles.button,
-                                          { marginTop: 8, paddingVertical: 6, paddingHorizontal: 12 },
-                                          isExpoGo && styles.buttonDisabled
-                                        ]}
-                                        onPress={() => {
-                                          if (isExpoGo) {
-                                            setAlertState({
-                                              visible: true,
-                                              title: "Transfer not available",
-                                              message: "Crypto transfers are not available in Expo Go due to missing crypto.subtle package. Please use TestFlight or a development build.",
-                                              type: "info",
-                                            });
-                                            return;
-                                          }
-                                          // Navigate to transfer page with token data
-                                          router.push({
-                                            pathname: '/transfer',
-                                            params: {
-                                              token: JSON.stringify(balance),
-                                              network: networkName.toLowerCase().replace(' ', '-')
-                                            }
-                                          });
-                                        }}
-                                        disabled={isExpoGo}
-                                      >
-                                        <Text style={[styles.buttonText, { fontSize: 12 }]}>
-                                          {isExpoGo ? "Transfer unavailable (Expo Go)" : "Transfer"}
-                                        </Text>
-                  </Pressable>
-                </View>
-            </View>
-                                );
-                              })
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-
-            {/* Fallback sign out for edge cases */}
-            {effectiveIsSignedIn && !signedButNoSA && !primaryAddress && (
-            <View style={styles.card}>
-                <Text style={styles.rowLabel}>Session Management</Text>
-                <Pressable style={[styles.buttonSecondary]} onPress={handleSignOut}>
-                  <Text style={styles.buttonTextSecondary}>Sign out</Text>
-                </Pressable>
-              </View>
-            )}
-
-
-            {/* Onramp Settings Card */}
-            <View style={styles.card}>
-              <Text style={styles.rowLabel}>Onramp Settings</Text>
-
-              <View style={styles.subBox}>
-                <Text style={styles.subHint}>Lifetime Transaction Limit Warning</Text>
-                <Text style={styles.helper}>
-                  Get a reminder when your remaining Apple Pay onramp transactions fall below this threshold
-                </Text>
-                <View style={styles.inputContainer}>
-                  <Text style={[styles.subValue, { marginRight: 12 }]}>Remind me when below:</Text>
-                  <TextInput
-                    style={[styles.input, { flex: 0, minWidth: 60, textAlign: 'center' }]}
-                    value={String(lifetimeTxThreshold)}
-                    onChangeText={(text) => {
-                      const num = parseInt(text, 10);
-                      if (!isNaN(num) && num >= 0 && num <= 99) {
-                        setLifetimeTxThresholdLocal(num);
-                      } else if (text === '') {
-                        setLifetimeTxThresholdLocal(0);
-                      }
-                    }}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    placeholder="5"
-                    placeholderTextColor={TEXT_SECONDARY}
-                  />
-                  <Text style={[styles.subValue, { marginLeft: 12 }]}>transactions</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Sandbox wallet card removed */}
-
-            {/* Export confirm modal is EVM-only (Base) */}
-
-            {/* Export confirm modal */}
-            <Modal
-              visible={showExportConfirm}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowExportConfirm(false)}
-            >
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                  <Text style={styles.modalTitle}>Export Private Key</Text>
-                  <Text style={styles.modalMessage}>
-                    Your private key will be copied to the clipboard. Keep it secure and never share it with anyone.
-                  </Text>
-
-                  <View style={styles.modalButtons}>
-                    <Pressable
-                      style={[styles.button, { backgroundColor: BORDER, flex: 1 }]}
-                      onPress={() => setShowExportConfirm(false)}
-                    >
-                      <Text style={[styles.buttonText, { color: TEXT_PRIMARY }]}>Cancel</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[styles.button, { backgroundColor: '#DC2626', flex: 1 }]}
-                      onPress={handleConfirmedExport}
-                      disabled={exporting}
-                    >
-                      <Text style={styles.buttonText}>
-                        {exporting ? "Exporting..." : "Export"}
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-
-            <CoinbaseAlert
-              visible={alertState.visible}
-              title={alertState.title}
-              message={alertState.message}
-              type={alertState.type}
-              onConfirm={() => setAlertState({ ...alertState, visible: false })}
-            />
-
-            {/* Re-verify phone confirmation */}
-            <Modal
-              visible={showReverifyConfirm}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowReverifyConfirm(false)}
-            >
-              <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                <Pressable
-                  style={StyleSheet.absoluteFillObject}
-                  onPress={() => setShowReverifyConfirm(false)}
-                />
-                <View style={styles.productionAlertCard}>
-                  <View style={styles.alertHandle} />
-                  <View style={styles.alertIconContainer}>
-                    <Ionicons name="shield-checkmark" size={48} color={ORANGE} />
-                  </View>
-                  <Text style={styles.alertTitle}>Re-verify Phone Required</Text>
-                  <Text style={styles.alertMessage}>
-                    To refresh your phone verification for Apple Pay, you need to sign out and sign back in with your phone number.
-                    {'\n\n'}
-                    Your wallet and data will remain safe. You'll receive an SMS code to verify and sign back in.
-                  </Text>
-                  <View style={styles.alertButtonRow}>
-                    <Pressable
-                      style={({ pressed }) => [styles.alertCancelButton, pressed && styles.buttonPressed]}
-                      onPress={() => setShowReverifyConfirm(false)}
-                    >
-                      <Text style={styles.alertCancelButtonText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.alertConfirmButton, pressed && styles.buttonPressed]}
-                      onPress={handleReverifyConfirm}
-                    >
-                      <Text style={styles.alertConfirmButtonText}>Continue</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-
-            {/* Production switch confirmation alert */}
-            <Modal
-              visible={productionSwitchAlertVisible}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setProductionSwitchAlertVisible(false)}
-            >
-              <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                <Pressable
-                  style={StyleSheet.absoluteFillObject}
-                  onPress={() => setProductionSwitchAlertVisible(false)}
-                />
-                <View style={styles.productionAlertCard}>
-                  <View style={styles.alertHandle} />
-                  <View style={styles.alertIconContainer}>
-                    <Ionicons name="information-circle" size={48} color={BLUE} />
-                  </View>
-                  <Text style={styles.alertTitle}>Switch to Production?</Text>
-                  <Text style={styles.alertMessage}>
-                    Your manual wallet address will be cleared when switching to production mode.
-                  </Text>
-                  <View style={styles.alertButtonRow}>
-                    <Pressable
-                      style={({ pressed }) => [styles.alertCancelButton, pressed && styles.buttonPressed]}
-                      onPress={() => setProductionSwitchAlertVisible(false)}
-                    >
-                      <Text style={styles.alertCancelButtonText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.alertConfirmButton, pressed && styles.buttonPressed]}
-                      onPress={() => {
-                        setProductionSwitchAlertVisible(false);
-                        setLocalSandboxEnabled(false);
-                        setSandboxMode(false);
-                        clearManualAddress();
-                        setManualAddress('');
-                      }}
-                    >
-                      <Text style={styles.alertConfirmButtonText}>Confirm</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </Modal>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.heading}>Profile</Text>
+
+        {/* Avatar */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(displayEmail || '?')[0].toUpperCase()}</Text>
           </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+          <Text style={styles.emailText}>{displayEmail}</Text>
+          <Text style={styles.walletLabel}>CDP Embedded Wallet</Text>
+        </View>
+
+        {/* Wallet card */}
+        {primaryAddress && (
+          <View style={styles.walletCard}>
+            <Text style={styles.walletCardLabel}>WALLET ADDRESS</Text>
+            <View style={styles.addressRow}>
+              <Text style={styles.walletAddress}>
+                {primaryAddress.slice(0, 6)}...{primaryAddress.slice(-4)}
+              </Text>
+              <Pressable
+                style={styles.copyPill}
+                onPress={async () => {
+                  await Clipboard.setStringAsync(primaryAddress);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              >
+                <Text style={styles.copyText}>{copied ? 'Copied!' : 'Copy'}</Text>
+              </Pressable>
+            </View>
+            <View style={styles.badgeRow}>
+              <View style={styles.networkBadge}>
+                <Text style={styles.networkBadgeText}>Base Mainnet</Text>
+              </View>
+              <View style={styles.gaslessBadge}>
+                <Text style={styles.gaslessBadgeText}>Gasless</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Sign out */}
+        <Pressable style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]} onPress={handleSignOut}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </Pressable>
+      </ScrollView>
+
+      <CoinbaseAlert
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
+        onConfirm={() => setAlertState({ ...alertState, visible: false })}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 20,
-    marginBottom: 24,
-  },
-  rowLabel: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  subBox: {
-    backgroundColor: CARD_BG,
-    padding: 12,
-    gap: 12,
-    marginBottom: 8,
-  },
-  copyButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  subValue: {
-    color: TEXT_PRIMARY,
-    fontSize: 12,
-    fontFamily: 'monospace',
-    flexShrink: 1,
-  },
-  subHint: {
-    color: TEXT_SECONDARY,
-    fontSize: 12,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  button: {
-    backgroundColor: BLUE,
-    borderRadius: 22,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    minHeight: 36,
-    flexDirection: 'row',
-  },
-  modalButton: {
-    marginTop: 0,
-  },
-  textContainer: {
-    flex: 1,           
-    marginRight: 12,  
-  },
-  productionWarning: {
-    fontSize: 12,
-    color: '#FF6B6B',
-    fontWeight: '500',
-  },
-  primary: {
-    backgroundColor: BLUE,
-  },
-  secondary: {
-    backgroundColor: BORDER,
-  },
-  buttonText: {
-    color: WHITE,
-    fontSize: 14,              
-    fontWeight: '600',
-    letterSpacing: 0.1,          
-  },
-  buttonSecondary: {
-    backgroundColor: BORDER,
-    borderRadius: 22,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    minHeight: 36,
-  },
-  buttonTextSecondary: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
   container: {
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: Paper.colors.background,
   },
-  authContainer: {
-    maxWidth: 300,
-    alignSelf: 'center',
-    width: '100%',
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 120,
   },
-  walletContainer: {
-    maxWidth: 300,
-    alignSelf: 'center',
-    width: '100%',
+  heading: {
+    ...Paper.type.heading,
+    color: Paper.colors.navy,
+    marginBottom: 28,
   },
-  title: {
-    fontSize: 24,
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  avatar: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: Paper.colors.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: Paper.colors.background,
+  },
+  emailText: {
+    marginTop: 12,
+    fontSize: 15,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
-    textAlign: 'center',
-    marginBottom: 32,
+    color: Paper.colors.navy,
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: TEXT_PRIMARY,
-    marginBottom: 8,
+  walletLabel: {
+    fontSize: 12,
+    color: Paper.colors.sand,
+    marginTop: 3,
   },
-  input: {
-    backgroundColor: CARD_BG,
-    borderColor: BORDER,
-    borderWidth: 1,
-    borderRadius: 12,
-    color: TEXT_PRIMARY,
-    padding: 14,
+  walletCard: {
+    backgroundColor: Paper.colors.surface,
+    borderRadius: Paper.radius.lg,
+    padding: 18,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  inputContainer: {
+  walletCardLabel: {
+    ...Paper.type.label,
+    color: Paper.colors.sand,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  pasteButton: {
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+  walletAddress: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    fontSize: 14,
+    fontWeight: '600',
+    color: Paper.colors.navy,
+    flex: 1,
   },
-  buttonDisabled: {
-    opacity: 0.6,
+  copyPill: {
+    backgroundColor: Paper.colors.orangeLight,
+    borderRadius: Paper.radius.full,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
-  buttonDanger: {
-    backgroundColor: '#DC2626',     // Proper red (not too bright)
-    borderRadius: 22,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    minHeight: 36,
-  },
-  helper: {
+  copyText: {
     fontSize: 12,
-    color: TEXT_SECONDARY,
-    marginTop: 8,
-    lineHeight: 16,
+    fontWeight: '700',
+    color: Paper.colors.orange,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+  },
+  networkBadge: {
+    backgroundColor: '#EBF2FF',
+    borderRadius: Paper.radius.full,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  networkBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#185FA5',
+  },
+  gaslessBadge: {
+    backgroundColor: Paper.colors.successLight,
+    borderRadius: Paper.radius.full,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  gaslessBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Paper.colors.success,
   },
   signOutButton: {
-    backgroundColor: '#f44336',
-    marginTop: 20,
+    marginTop: 32,
+    paddingVertical: 12,
   },
-  subContainer: {
-    marginBottom: 4,
+  signOutText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Paper.colors.sand,
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Paper.colors.background,
   },
   loadingText: {
-    color: TEXT_PRIMARY,
     fontSize: 14,
-    textAlign: 'center',
+    color: Paper.colors.sand,
     marginTop: 16,
-  },
-  message: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12
-  },
-  rowValue: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontWeight: '600',
-    flexShrink: 1
-  },
-  rowAction: {
-    backgroundColor: BORDER,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12
-  },
-  rowActionText: {
-    color: TEXT_PRIMARY,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 20,
-    width: '90%',
-    maxWidth: 300,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: TEXT_PRIMARY,
-    marginBottom: 12,
-  },
-  modalMessage: {
-    color: TEXT_SECONDARY,
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalButtonsVertical: {
-    flexDirection: 'column',
-    gap: 8,
-  },
-  pillSelect: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: BORDER,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    gap: 8,
-    minWidth: 80,
-    maxWidth: 140,
-  },
-    pillText: {
-      fontSize: 14,
-      fontWeight: "500",
-      color: TEXT_PRIMARY,
-    },
-    selectContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      flex: 1,
-    },
-    modalSheet: {
-      backgroundColor: CARD_BG,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      maxHeight: "75%",
-      width: "100%",
-      minHeight: 280,
-      paddingBottom: 20,
-      paddingTop: 8,
-    },
-    modalHandle: {
-      width: 36,
-      height: 4,
-      backgroundColor: BORDER,
-      borderRadius: 2,
-      alignSelf: "center",
-      marginTop: 8,
-      marginBottom: 16,
-    },
-    modalItem: {
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: BORDER,
-    },
-    modalItemSelected: {
-      backgroundColor: BLUE + "15",
-    },
-    modalItemText: {
-    fontSize: 18,
-    fontWeight: "500",
-    color: TEXT_PRIMARY,
-    flex: 1,
-    },
-    modalItemTextSelected: {
-      color: BLUE,
-      fontWeight: "600",
-    },
-    modalScrollView: {
-      maxHeight: 400,
-    },
-    modalItemContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    modalItemLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      flex: 1,
-    },
-    tokenRow: {
-      flexDirection: 'row',
-      paddingVertical: 16,
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    tokenSymbol: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: TEXT_PRIMARY,
-      marginBottom: 4,
-    },
-    tokenName: {
-      fontSize: 14,
-      color: TEXT_SECONDARY,
-      marginBottom: 2,
-    },
-    tokenNetwork: {
-      fontSize: 12,
-      color: TEXT_SECONDARY,
-      fontStyle: 'italic',
-    },
-    tokenAmount: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: TEXT_PRIMARY,
-      marginBottom: 4,
-    },
-    tokenUsd: {
-      fontSize: 14,
-      color: TEXT_SECONDARY,
-      marginBottom: 4,
-    },
-  // Network grouping styles
-  networkHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: BORDER,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  networkTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: TEXT_PRIMARY,
-  },
-  faucetIconButton: {
-    padding: 8,
-    backgroundColor: 'rgba(105, 145, 255, 0.2)', // VIOLET with opacity
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Production switch alert styles (matching CoinbaseAlert)
-  productionAlertCard: {
-    backgroundColor: CARD_BG,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 34,
-    minHeight: 220,
-  },
-  alertHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: BORDER,
-    borderRadius: 2,
-    marginBottom: 20,
-    alignSelf: 'center',
-  },
-  alertIconContainer: {
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  alertTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: TEXT_PRIMARY,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  alertMessage: {
-    fontSize: 16,
-    color: TEXT_SECONDARY,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-    paddingHorizontal: 16,
-  },
-  alertButtonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-  },
-  alertCancelButton: {
-    flex: 1,
-    backgroundColor: BORDER,
-    paddingVertical: 16,
-    borderRadius: 25,
-    alignItems: 'center',
-  },
-  alertConfirmButton: {
-    flex: 1,
-    backgroundColor: BLUE,
-    paddingVertical: 16,
-    borderRadius: 25,
-    alignItems: 'center',
-  },
-  alertCancelButtonText: {
-    color: TEXT_PRIMARY,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  alertConfirmButtonText: {
-    color: WHITE,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
 });

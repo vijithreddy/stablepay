@@ -11,10 +11,10 @@
 export const TEST_ACCOUNTS = {
   // Accepted test emails (for TestFlight reviewers and internal testing)
   emails: [
-    'reviewer@coinbase-demo.app',
-    'devtest@coinbase-demo.app'
+    'reviewer@stablepay.app',
+    'devtest@stablepay.app'
   ],
-  email: 'reviewer@coinbase-demo.app', // Keep for backwards compatibility
+  email: 'reviewer@stablepay.app', // Keep for backwards compatibility
   otp: '123456',
   phone: '+12345678901', // Standard test phone number (accepted by most APIs)
   smsCode: '654321',
@@ -24,13 +24,13 @@ export const TEST_ACCOUNTS = {
 
   // Mock wallet addresses (consistent for testing)
   wallets: {
-    evm: '0x88cF83FD9C2709cDcBe393C0862070887E29E6DE', // Smart Account for demo
+    evm: '0x88cF83FD9C2709cDcBe393C0862070887E29E6DE', // Smart Account for testing
     eoaDummy: '0xEE396A141b5Be1def56cb7f5726A9884be34F396', // Dummy EOA address for display
     solana: '7SsYQQFW1MMyYmeLEZyus4nW1Gxe8fwJRu4gtJf6GAnG'
   },
 
   // Mock seed phrase for export functionality (TestFlight only)
-  seedPhrase: 'test flight review demo wallet please approve thank you coinbase reviewer mock seed phrase'
+  seedPhrase: 'test flight review wallet please approve thank you stablepay reviewer mock seed phrase'
 };
 
 export function isTestAccount(email: string): boolean {

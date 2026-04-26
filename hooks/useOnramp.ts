@@ -1,16 +1,16 @@
 /**
  * ============================================================================
- * ONRAMP HOOK - CENTRAL STATE & API ORCHESTRATION
+ * STABLEPAY HOOK - CENTRAL STATE & API ORCHESTRATION
  * ============================================================================
  *
- * This hook manages all onramp-related state and coordinates API calls.
- * It's the single source of truth for the onramp flow.
+ * This hook manages all StablePay-related state and coordinates API calls.
+ * It's the single source of truth for the StablePay flow.
  *
  * RESPONSIBILITIES:
  * 1. Fetch available options (assets, networks, payment methods, currencies)
  * 2. Dynamic quote fetching (real-time pricing with fees)
  * 3. Order creation (Apple Pay native flow)
- * 4. Widget session creation (Coinbase-hosted checkout)
+ * 4. Session creation (Coinbase-hosted checkout)
  * 5. Form validation state management
  *
  * DATA FLOW:
@@ -25,7 +25,7 @@
  * │    ↓                                                             │
  * │ 5. USER SLIDES CONFIRM → createOrder() OR createWidgetSession() │
  * │    ↓                                                             │
- * │ 6. PAYMENT FLOW → APIGuestCheckoutWidget OR Browser Redirect    │
+ * │ 6. PAYMENT FLOW → APIGuestCheckout OR Browser Redirect          │
  * └──────────────────────────────────────────────────────────────────┘
  *
  * TWO PAYMENT PATHS:
@@ -38,11 +38,11 @@
  *    - Real-time transaction tracking via post-events
  *    Flow: createOrder() → APIGuestCheckoutWidget → Native sheet → Blockchain
  *
- * B. COINBASE WIDGET (COINBASE_WIDGET):
+ * B. COINBASE CHECKOUT (COINBASE_WIDGET):
  *    - Browser-based checkout (Linking.openURL)
  *    - NO phone verification required
  *    - Multi-currency support (USD, EUR, GBP, etc.)
- *    - User can select payment method in widget (Card, ACH, etc.)
+ *    - User can select payment method during checkout (Card, ACH, etc.)
  *    - Coinbase-hosted page handles payment
  *    Flow: createWidgetSession() → Browser → Coinbase page → Return to app
  *
@@ -61,7 +61,7 @@
  *
  * @see components/onramp/OnrampForm.tsx for form UI and validation
  * @see utils/createGuestCheckoutOrder.ts for guest checkout (Apple Pay / Google Pay) API integration
- * @see utils/createOnrampSession.ts for Widget session API
+ * @see utils/createOnrampSession.ts for session API
  * @see utils/fetchBuyQuote.ts for quote generation logic
  */
 
@@ -73,8 +73,7 @@ import { OnrampFormData } from "../components/onramp/OnrampForm";
 import { TEST_ACCOUNTS } from "../constants/TestAccounts";
 import { createGuestCheckoutOrder } from "../utils/createGuestCheckoutOrder";
 import { fetchBuyOptions } from "../utils/fetchBuyOptions";
-import { fetchBuyQuote } from "../utils/fetchBuyQuote";
-import { getCountry, getSandboxMode, getSubdivision, getVerifiedPhone, getVerifiedPhoneAt, isPhoneFresh60d, isTestSessionActive, setCurrentPartnerUserRef, setSubdivision } from "../utils/sharedState";
+import { getCountry, getSubdivision, getVerifiedPhone, getVerifiedPhoneAt, isPhoneFresh60d, isTestSessionActive, setCurrentPartnerUserRef, setSubdivision } from "../utils/sharedState";
 
 
 export type PaymentMethodOption = { display: string; value: string };
@@ -86,12 +85,10 @@ export function useOnramp() {
   const [options, setOptions] = useState<any>(null);
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
-  const [currentQuote, setCurrentQuote] = useState<any>(null);
-  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const { currentUser } = useCurrentUser();
   const [buyConfig, setBuyConfig] = useState<any>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [isSandboxOrder, setIsSandboxOrder] = useState(false);
+  const isSandboxOrder = false;
 
 
   /**
@@ -130,21 +127,17 @@ export function useOnramp() {
 
       // Check if this is a test session (used throughout the function)
       const isTestSession = isTestSessionActive();
-      const currentSandboxMode = getSandboxMode();
 
       const paymentMethodValue = formData.paymentMethod || 'GUEST_CHECKOUT_APPLE_PAY';
       const paymentLabel = paymentMethodValue === 'GUEST_CHECKOUT_GOOGLE_PAY' ? 'Google Pay' : 'Apple Pay';
 
-      const sandboxPrefix = currentSandboxMode ? "sandbox-" : "";
       const userId = currentUser?.userId || 'unknown-user';
-      const partnerUserRef = `${sandboxPrefix}${userId}`;
+      const partnerUserRef = `stablepay-${userId}`;
 
       console.log(`[${paymentLabel.toUpperCase()}] Creating order`, {
-        sandbox: currentSandboxMode,
         partnerUserRef,
       });
       setCurrentPartnerUserRef(partnerUserRef);
-      setIsSandboxOrder(currentSandboxMode);
 
       // IMPORTANT: Register push token before transaction (ensures webhook can send notification)
       try {
@@ -174,47 +167,38 @@ export function useOnramp() {
       let phone = getVerifiedPhone();
       let phoneAt = getVerifiedPhoneAt();
 
-      // Check for missing auth methods (non-sandbox only)
-      if (!getSandboxMode()) {
-        // Note: Non-US phones can now go through the verification flow for experience
-        // The actual Apple Pay order will fail at Coinbase API level for non-US phones
-        // This allows international users to experience the flow with disclaimers
+      // Check for missing auth methods
+      // Note: Non-US phones can now go through the verification flow for experience
+      // The actual Apple Pay order will fail at Coinbase API level for non-US phones
+      // This allows international users to experience the flow with disclaimers
 
-        // Check if email is missing or not linked
-        if (!userEmail) {
-          const missingEmailError: any = new Error(`Email verification required for ${paymentLabel}`);
-          missingEmailError.code = 'MISSING_EMAIL';
-          throw missingEmailError;
-        }
-
-        // Check if phone is missing or not linked to CDP
-        if (!cdpPhone) {
-          const missingPhoneError: any = new Error(`Phone verification required for ${paymentLabel}`);
-          missingPhoneError.code = 'MISSING_PHONE';
-          throw missingPhoneError;
-        }
-
-        // Check if CDP phone matches verified phone AND is fresh (60 days)
-        if (phone !== cdpPhone || !isPhoneFresh60d()) {
-          console.log(`🚫 [${paymentLabel.toUpperCase()}] Phone verification failed:`, {
-            phoneMatch: phone === cdpPhone,
-            isFresh: isPhoneFresh60d()
-          });
-          const missingPhoneError: any = new Error(`Phone verification required for ${paymentLabel}. Please verify your phone on the Profile page.`);
-          missingPhoneError.code = 'MISSING_PHONE';
-          throw missingPhoneError;
-        }
-      } else {
-        console.log(`🧪 [${paymentLabel.toUpperCase()}] Sandbox mode - skipping phone validation`);
-
-        // Guest Checkout is US-only, so always use TEST_ACCOUNTS US phone in sandbox
-        phone = TEST_ACCOUNTS.phone; // US phone: +12345678901
-        phoneAt = Date.now();
-        console.log(`🧪 [${paymentLabel.toUpperCase()}] Using TEST_ACCOUNTS US phone for sandbox:`, phone);
+      // Check if email is missing or not linked
+      if (!userEmail) {
+        const missingEmailError: any = new Error(`Email verification required for ${paymentLabel}`);
+        missingEmailError.code = 'MISSING_EMAIL';
+        throw missingEmailError;
       }
 
-      // Production: require fresh phone verification
-      if (!getSandboxMode() && (!phone || !isPhoneFresh60d())) {
+      // Check if phone is missing or not linked to CDP
+      if (!cdpPhone) {
+        const missingPhoneError: any = new Error(`Phone verification required for ${paymentLabel}`);
+        missingPhoneError.code = 'MISSING_PHONE';
+        throw missingPhoneError;
+      }
+
+      // Check if CDP phone matches verified phone AND is fresh (60 days)
+      if (phone !== cdpPhone || !isPhoneFresh60d()) {
+        console.log(`🚫 [${paymentLabel.toUpperCase()}] Phone verification failed:`, {
+          phoneMatch: phone === cdpPhone,
+          isFresh: isPhoneFresh60d()
+        });
+        const missingPhoneError: any = new Error(`Phone verification required for ${paymentLabel}. Please verify your phone on the Profile page.`);
+        missingPhoneError.code = 'MISSING_PHONE';
+        throw missingPhoneError;
+      }
+
+      // Require fresh phone verification
+      if (!phone || !isPhoneFresh60d()) {
         const phoneExpiredError: any = new Error(`Phone verification has expired. Please re-verify your phone to continue with ${paymentLabel}.`);
         phoneExpiredError.code = 'PHONE_EXPIRED';
         throw phoneExpiredError;
@@ -224,11 +208,10 @@ export function useOnramp() {
       // App only shows Smart Account balances - funds sent to EOA would be invisible
       const networkName = getNetworkNameFromDisplayName(formData.network);
       const isEvmNetwork = ['base', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'avalanche', 'linea', 'zksync'].includes(networkName.toLowerCase());
-      const isSandbox = getSandboxMode();
 
       let destinationAddress = formData.address;
 
-      if (!isSandbox && isEvmNetwork) {
+      if (isEvmNetwork) {
         // TestFlight reviewers use hardcoded address as their "smart account"
         const isTestFlight = isTestSessionActive();
         const smartAccount = isTestFlight
@@ -236,7 +219,7 @@ export function useOnramp() {
           : (currentUser?.evmSmartAccounts?.[0] as string); // Real users: Use CDP Smart Account
 
         if (!smartAccount) {
-          throw new Error('Smart Account required for EVM onramp transactions. Your balances are stored in the Smart Account. Please ensure your Embedded Wallet is properly initialized.');
+          throw new Error('Smart Account required for EVM transactions. Your balances are stored in the Smart Account. Please ensure your Embedded Wallet is properly initialized.');
         }
         destinationAddress = smartAccount;
         console.log('🔒 [ONRAMP] Using Smart Account for EVM transaction:', smartAccount);
@@ -293,7 +276,7 @@ export function useOnramp() {
       }
 
       // Generate unique user reference for transaction tracking
-      // Widget: Use userId directly (no sandbox prefix needed)
+      // Widget: Use userId directly
       const userId = currentUser?.userId || 'unknown-user';
       const partnerUserRef = userId;
       setCurrentPartnerUserRef(partnerUserRef);
@@ -316,7 +299,6 @@ export function useOnramp() {
 
       // CRITICAL: For EVM networks, MUST use Smart Account (same as Apple Pay)
       const isEvmNetwork = ['base', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'avalanche', 'linea', 'zksync'].includes(networkName.toLowerCase());
-      const isSandbox = getSandboxMode();
 
       let destinationAddress = formData.address;
 
@@ -324,11 +306,10 @@ export function useOnramp() {
         formDataAddress: formData.address,
         network: networkName,
         isEvmNetwork,
-        isSandbox,
         currentUserEvm: currentUser?.evmSmartAccounts?.[0]
       });
 
-      if (!isSandbox && isEvmNetwork) {
+      if (isEvmNetwork) {
         // TestFlight reviewers use hardcoded address as their "smart account"
         const isTestFlight = isTestSessionActive();
         const smartAccount = isTestFlight
@@ -336,10 +317,10 @@ export function useOnramp() {
           : (currentUser?.evmSmartAccounts?.[0] as string); // Real users: Use CDP Smart Account
 
         if (!smartAccount) {
-          throw new Error('Smart Account required for EVM onramp transactions. Your balances are stored in the Smart Account. Please ensure your Embedded Wallet is properly initialized.');
+          throw new Error('Smart Account required for EVM transactions. Your balances are stored in the Smart Account. Please ensure your Embedded Wallet is properly initialized.');
         }
         destinationAddress = smartAccount;
-        console.log('🔒 [ONRAMP] Using Smart Account for EVM widget transaction:', smartAccount);
+        console.log('🔒 [ONRAMP] Using Smart Account for EVM checkout transaction:', smartAccount);
       }
 
       // Auth handled by authenticatedFetch
@@ -354,12 +335,6 @@ export function useOnramp() {
       });
 
       let url = res?.session?.onrampUrl;
-      const isTestSession = isTestSessionActive();
-
-      // Replace URL for sandbox mode OR test accounts
-      if ((getSandboxMode() || isTestSession) && url) {
-        url = url.replace('pay.coinbase.com', 'pay-sandbox.coinbase.com');
-      }
 
       // Add partnerUserId as URL parameter (temporary workaround until supported as body param)
       if (url) {
@@ -380,7 +355,6 @@ export function useOnramp() {
     setHostedUrl('');
     setIsProcessingPayment(false);
     setTransactionStatus(null);
-    setIsSandboxOrder(false);
   }, []);
 
   /**
@@ -399,7 +373,7 @@ export function useOnramp() {
         fetchBuyConfig(),
       ]);
       setOptions(opts);
-        // Filter countries to only those with CARD payment method (Buy & Send)
+        // Filter countries to only those with CARD payment method
         const filteredConfig = {
           ...cfg,
           countries: (cfg?.countries || []).filter((country: any) =>
@@ -418,47 +392,7 @@ export function useOnramp() {
     }
   }, []);
 
-  // hooks/useOnramp.ts - add comment about dual quote system
-  /**
-   * Quote fetching strategy:
-   * - Apple Pay: Uses v2 orders API (USD only, requires phone)
-   * - Coinbase Widget: Uses v2 session API (multi-currency based on options, no phone required)
-   */
-  const fetchQuote = useCallback(async (formData: {
-    amount: string;
-    asset: string;
-    network: string;
-    paymentCurrency: string;
-    paymentMethod?: string;
-  }) => {
-    const amt = Number.parseFloat(formData?.amount as any);
-    if (!formData.amount || !formData.asset || !formData.network || !Number.isFinite(amt) || amt <= 0) {
-      setCurrentQuote(null);
-      return;
-    }
-
-    try {
-      setIsLoadingQuote(true);
-      const assetSymbol = getAssetSymbolFromName(formData.asset);
-      const networkName = getNetworkNameFromDisplayName(formData.network);
-
-      // Auth handled by authenticatedFetch
-      const quote = await fetchBuyQuote({
-        paymentAmount: formData.amount,
-        paymentCurrency: formData.paymentCurrency,
-        purchaseCurrency: assetSymbol,
-        destinationNetwork: networkName,
-        paymentMethod: formData.paymentMethod || 'COINBASE_WIDGET'
-      });
-
-      setCurrentQuote(quote);
-    } catch (error) {
-      console.log('Failed to fetch quote (unsupported network or demo address unavailable):', error);
-      setCurrentQuote(null);
-    } finally {
-      setIsLoadingQuote(false);
-    }
-  }, [getAssetSymbolFromName, getNetworkNameFromDisplayName]);
+  // Quotes API removed — USDC/Base is gasless, no fee display needed
 
   // Helper functions that use the stored options
   const getAvailableNetworks = useCallback((selectedAsset?: string) => {
@@ -526,8 +460,6 @@ export function useOnramp() {
     options,
     isLoadingOptions,
     optionsError,
-    isLoadingQuote,
-    currentQuote,
     paymentCurrencies,
     buyConfig,
     // Actions
@@ -539,7 +471,6 @@ export function useOnramp() {
     getAvailableAssets,
     setTransactionStatus,
     setIsProcessingPayment,
-    fetchQuote,
     // Helpers
     getNetworkNameFromDisplayName,
     getAssetSymbolFromName,

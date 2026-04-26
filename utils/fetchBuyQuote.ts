@@ -3,7 +3,7 @@ import { BASE_URL } from '@/constants/BASE_URL';
 import { authenticatedFetch } from './authenticatedFetch';
 import { createGuestCheckoutOrder } from './createGuestCheckoutOrder';
 import { demoAddressForNetwork } from './randomAddresses';
-import { getCountry, getCurrentWalletAddress, getSandboxMode, getSubdivision } from './sharedState';
+import { getCountry, getCurrentWalletAddress, getSubdivision } from './sharedState';
 
 export async function fetchBuyQuote(payload: {
   paymentCurrency: string;
@@ -12,11 +12,8 @@ export async function fetchBuyQuote(payload: {
   destinationNetwork: string;
   paymentMethod: string;
 }) {
-  // In sandbox mode, use the current wallet address (could be manual override)
-  // In production, fall back to demo address for quote purposes
-  const isSandbox = getSandboxMode();
-  const userAddress = getCurrentWalletAddress();
-  const destinationAddress = (isSandbox && userAddress) ? userAddress : demoAddressForNetwork(payload.destinationNetwork);
+  // Use demo address for quote purposes
+  const destinationAddress = demoAddressForNetwork(payload.destinationNetwork);
 
   // If we couldn't generate a demo address for this network, return null instead of erroring
   if (!destinationAddress) {
@@ -37,7 +34,7 @@ export async function fetchBuyQuote(payload: {
         phoneNumber: '+12345678901',
         agreementAcceptedAt: new Date().toISOString(),
         phoneNumberVerifiedAt: new Date().toISOString(),
-        partnerUserRef: isSandbox ? 'sandbox-HSAHDSBDFH' : 'HSAHDSBDFH',
+        partnerUserRef: 'HSAHDSBDFH',
         destinationAddress,
       });
 
@@ -82,9 +79,9 @@ export async function fetchBuyQuote(payload: {
       paymentMethod: payload.paymentMethod === 'COINBASE_WIDGET' ? 'CARD' : payload.paymentMethod
     };
 
-    console.log('📤 [API] fetchBuyQuote (Widget)');
+    console.log('📤 [API] fetchBuyQuote (Checkout)');
 
-    // v2 quote for Coinbase Widget (session endpoint)
+    // v2 quote for Coinbase checkout (session endpoint)
     const response = await authenticatedFetch(`${BASE_URL}/server/api`, {
       method: 'POST',
       headers: {

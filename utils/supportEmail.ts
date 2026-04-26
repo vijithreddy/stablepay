@@ -32,11 +32,11 @@
 import * as Application from 'expo-application';
 import * as Localization from 'expo-localization';
 import { Linking, Platform } from 'react-native';
-import { getCurrentPartnerUserRef, getCountry, getSandboxMode } from './sharedState';
+import { getCurrentPartnerUserRef, getCountry } from './sharedState';
 
 // Support email - not exposed in UI, only used internally for mailto
 const SUPPORT_EMAIL = 'onrampsupport@coinbase.com';
-const PARTNER_NAME = 'Onramp V2 Demo';
+const PARTNER_NAME = 'StablePay';
 
 export interface TransactionDebugInfo {
   // From transaction data
@@ -130,7 +130,6 @@ function buildDebugBlock(info: TransactionDebugInfo | GuestCheckoutDebugInfo): s
   const timezone = Localization.getCalendars()[0]?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const appVersion = Application.nativeApplicationVersion || 'unknown';
   const appId = process.env.EXPO_PUBLIC_CDP_PROJECT_ID || 'unknown';
-  const sandboxMode = getSandboxMode();
 
   const lines: string[] = [
     '--- Debug Information (please do not edit) ---',
@@ -184,8 +183,6 @@ function buildDebugBlock(info: TransactionDebugInfo | GuestCheckoutDebugInfo): s
   lines.push(`timestamp: ${timestamp}`);
   lines.push(`locale: ${locale}`);
   lines.push(`timezone: ${timezone}`);
-  if (sandboxMode) lines.push(`environment: sandbox`);
-
   // Error information (at the end)
   const errorMessage = 'errorMessage' in info ? info.errorMessage : undefined;
   const debugMessage = 'debugMessage' in info ? info.debugMessage : undefined;
@@ -309,7 +306,7 @@ export function createGuestCheckoutDebugInfo(params: {
 
   return {
     flowType: 'guest',
-    partnerName: 'Onramp V2 Demo',
+    partnerName: 'StablePay',
     guestEntityHash: partnerUserRef ? `${partnerUserRef.slice(0, 20)}${Date.now().toString(36)}` : undefined,
     guestAsset: params.asset,
     guestNetwork: params.network,

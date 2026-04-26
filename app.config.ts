@@ -1,44 +1,30 @@
 import 'dotenv/config';
 import { ExpoConfig } from 'expo/config';
- 
+
 const config: ExpoConfig = {
-    name: 'Onramp V2 Demo',
-    slug: 'onramp-v2-demo',
+    name: 'StablePay',
+    slug: 'stablepay',
     version: '1.1.1',
-    scheme: 'onrampdemo',
+    scheme: 'stablepay',
+    description: 'Instant USDC payments on Base',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
-    icon: './assets/images/onrampV2Icon.png',
+    icon: './assets/images/stablepay-icon.png',
 
     ios: {
-      bundleIdentifier: 'com.coinbase.cdp-onramp',
-      buildNumber: process.env.IOS_BUILD_NUMBER ?? '1.0.0', // bump each submit
+      bundleIdentifier: 'com.vijithreddy.stablepay',
+      buildNumber: process.env.IOS_BUILD_NUMBER ?? '1.0.0',
       supportsTablet: false,
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false
       }
     },
 
-    android: {
-      adaptiveIcon: {
-        foregroundImage: './assets/images/adaptive-icon.png',
-        backgroundColor: '#ffffff'
-      },
-      edgeToEdgeEnabled: true,
-      package: "com.coinbase.cdp_onramp"
-    },
-
-    web: {
-      bundler: 'metro',
-      output: 'static',
-      favicon: './assets/images/favicon.png'
-    },
-
     plugins: [
       'expo-router',
       'expo-secure-store',
       'expo-localization',
-      ['expo-splash-screen', { image: './assets/images/splash-icon.png', imageWidth: 200, resizeMode: 'contain', backgroundColor: '#ffffff' }],
+      ['expo-splash-screen', { image: './assets/images/stablepay-splash.png', imageWidth: 200, resizeMode: 'contain', backgroundColor: '#ffffff' }],
       ['expo-build-properties', { ios: { deploymentTarget: '15.1' } }],
       ['expo-notifications', {
         icon: './assets/images/icon.png',
@@ -48,7 +34,6 @@ const config: ExpoConfig = {
 
     experiments: { typedRoutes: true },
 
-    // Good hygiene if you later use EAS Update
     runtimeVersion: { policy: 'sdkVersion' },
 
     extra: {

@@ -2,13 +2,12 @@ import { useCurrentUser, useIsInitialized, useSignInWithEmail, useVerifyEmailOTP
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CoinbaseAlert } from '../components/ui/CoinbaseAlerts';
-import { COLORS } from '../constants/Colors';
+import { Paper } from '../constants/PaperTheme';
 import { isTestAccount, TEST_ACCOUNTS } from '../constants/TestAccounts';
 import { setCurrentWalletAddress, setTestSession } from '../utils/sharedState';
-
-const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, BLUE, WHITE } = COLORS;
 const RESEND_SECONDS = 30;
 
 export default function EmailCodeScreen() {
@@ -195,10 +194,10 @@ export default function EmailCodeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={TEXT_PRIMARY} />
+          <Ionicons name="chevron-back" size={24} color={Paper.colors.navy} />
         </Pressable>
       </View>
 
@@ -243,7 +242,7 @@ export default function EmailCodeScreen() {
               disabled={verifying || otp.length < 4}
             >
               {verifying ? (
-                <ActivityIndicator color={WHITE} />
+                <ActivityIndicator color={Paper.colors.white} />
               ) : (
                 <Text style={styles.continueButtonText}>Verify</Text>
               )}
@@ -275,11 +274,10 @@ export default function EmailCodeScreen() {
   );
 }
 
-// Use the same styles as phone-code.tsx
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -290,6 +288,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginRight: 8,
+    color: Paper.colors.sand,
   },
   content: {
     flex: 1,
@@ -303,15 +302,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     textAlign: 'center',
     marginBottom: 16,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: TEXT_SECONDARY,
+    fontSize: 14,
+    color: Paper.colors.sand,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 40,
@@ -322,35 +322,30 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   codeInput: {
-    backgroundColor: CARD_BG,
-    borderWidth: 2,
-    borderColor: BLUE,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    fontSize: 24,
-    color: TEXT_PRIMARY,
+    backgroundColor: Paper.colors.surface,
+    borderWidth: 1.5,
+    borderColor: Paper.colors.border,
+    borderRadius: Paper.radius.md,
+    padding: 16,
+    fontSize: 28,
+    fontWeight: '700',
+    color: Paper.colors.navy,
     textAlign: 'center',
-    letterSpacing: 8,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    letterSpacing: 12,
+    width: '100%',
   },
   continueButton: {
-    backgroundColor: BLUE,
-    borderRadius: 25,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
+    backgroundColor: Paper.colors.orange,
+    height: 54,
+    borderRadius: Paper.radius.md,
     width: '100%',
     alignItems: 'center',
-    shadowColor: BLUE,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    justifyContent: 'center',
   },
   continueButtonText: {
-    color: WHITE,
-    fontSize: 18,
-    fontWeight: '600',
+    color: Paper.colors.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
   disabledButton: {
     opacity: 0.5,
@@ -360,15 +355,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resendText: {
-    color: TEXT_SECONDARY,
     fontSize: 14,
+    color: Paper.colors.sand,
+    fontWeight: '500',
   },
   resendButton: {
-    color: BLUE,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    color: Paper.colors.sand,
+    fontWeight: '500',
   },
   disabledText: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sandLight,
   },
 });

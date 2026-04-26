@@ -11,12 +11,12 @@
  *
  * 1. WALLET ADDRESSES (currentWalletAddress, manualWalletAddress)
  *    - EVM address: Smart Account or EOA from CDP
- *    - Manual address: Testing-only input for sandbox mode
+ *    - Manual address: Testing-only input
  *    - getCurrentWalletAddress(): Returns EVM address (see below)
  *
  * 2. NETWORK TRACKING (currentNetwork)
  *    - Tracks selected blockchain network (Base, Ethereum, etc.)
- *    - Updated by OnrampForm when user changes network dropdown
+ *    - Updated by the form when user changes network dropdown
  *    - Used for address resolution logic
  *
  * 3. PHONE VERIFICATION (verifiedPhone, verifiedPhoneAt)
@@ -30,13 +30,7 @@
  *    - US requires subdivision (state) for compliance
  *    - Triggers OnrampForm remount on change (key prop)
  *
- * 5. SANDBOX MODE (sandboxMode)
- *    - Defaults to ON for safety (prevents accidental real transactions)
- *    - Resets to default ON every app restart
- *    - Test mode: uses mock data, optional verification
- *    - Production mode: real transactions, strict validation
- *
- * 6. TRANSACTION TRACKING (currentPartnerUserRef, pendingTransactionForm)
+ * 5. TRANSACTION TRACKING (currentPartnerUserRef, pendingTransactionForm)
  *    - partnerUserRef: Unique identifier for transaction history lookup
  *    - pendingForm: Stores form data when user needs phone verification
  *
@@ -47,12 +41,11 @@
  * getCurrentWalletAddress() returns the EVM wallet address.
  * App is USDC/Base/Apple-Pay only — no multi-chain routing needed.
  *
- * SANDBOX MODE:  manual > EVM wallet > null
- * PRODUCTION:    EVM wallet > null
+ * RESOLUTION:    EVM wallet > null
  *
  * @see components/onramp/OnrampForm.tsx for network change handling
  * @see app/(tabs)/index.tsx for address updates on network changes
- * @see app/(tabs)/profile.tsx for manual address input (sandbox only)
+ * @see app/(tabs)/profile.tsx for wallet management
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -106,22 +99,6 @@ let phoneVerifyCanceled = false;
 export const markPhoneVerifyCanceled = () => { phoneVerifyCanceled = true; };
 export const getPhoneVerifyWasCanceled = () => phoneVerifyCanceled;
 export const clearPhoneVerifyWasCanceled = () => { phoneVerifyCanceled = false; };
-
-// Sandbox mode - always defaults to ON for safety (prevents accidental real transactions)
-// Does NOT persist across app restarts - intentional design
-let sandboxMode: boolean = true;
-
-export const getSandboxMode = () => sandboxMode;
-export const setSandboxMode = (enabled: boolean) => {
-  sandboxMode = enabled;
-  console.log('Sandbox mode:', enabled ? 'ENABLED' : 'DISABLED');
-};
-
-// Initialize sandbox mode - always starts as ON for safety
-export const hydrateSandboxMode = async () => {
-  sandboxMode = true;
-  console.log('ℹ️ Sandbox mode initialized to default: ENABLED (for safety)');
-};
 
 // ============================================================================
 // TEST ACCOUNT SESSION (TestFlight Only)
@@ -225,9 +202,6 @@ export const getCurrentNetwork = () => currentNetwork;
 
 // REMOVED: Solana network routing — Base/EVM only
 export const getCurrentWalletAddress = () => {
-  if (sandboxMode) {
-    return manualWalletAddress || currentWalletAddress || null;
-  }
   return currentWalletAddress || null;
 };
 

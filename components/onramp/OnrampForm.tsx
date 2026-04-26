@@ -1,10 +1,10 @@
 /**
  * ============================================================================
- * ONRAMP FORM - MAIN USER INTERFACE FOR CRYPTO PURCHASES
+ * STABLEPAY FORM - MAIN USER INTERFACE FOR USDC TRANSFERS
  * ============================================================================
  *
- * This is the central form where users configure their crypto purchase.
- * It handles complex relationships between assets, networks, payment methods.
+ * This is the central form where users configure their USDC transfer.
+ * It handles asset selection, network configuration, and payment methods.
  *
  * DYNAMIC FILTERING (Many-to-Many Relationships):
  *
@@ -42,8 +42,7 @@
  * 1. Amount: Must be positive number, within payment method limits
  * 2. Address: Format validation based on network type
  *    - EVM: 0x + 40 hex characters
- *    - Sandbox: Any non-empty string (testing flexibility)
- * 3. Network Support: EVM only in production (Base), any in sandbox
+ * 3. Network Support: EVM only (Base)
  *
  * NOTIFICATION CARDS (Context-Aware Messaging):
  *
@@ -51,15 +50,13 @@
  * 1. Network Not Supported (prod, non-EVM): Orange warning
  * 2. Smart Account Required (prod, EVM, no smart account): Red error
  * 3. Wallet Required (prod, no address): Red error
- * 4. Address Required (sandbox, no address): Red error
- * 5. Sandbox Mode (sandbox, has address): Blue info
- * 6. Production Mode (prod, signed in): Red warning
+ * 4. Production Mode (signed in): Red warning
  *
  * Card priority (first match wins):
  * - Unsupported network (highest priority - blocks all)
  * - Smart Account missing for EVM networks
  * - Invalid address for current network
- * - Sandbox/Production status info
+ * - Production status info
  *
  * PAYMENT METHOD RESTRICTIONS:
  *
@@ -68,14 +65,14 @@
  * - US residents only (filtered by country)
  * - $0-$500 limit
  *
- * Coinbase Widget (COINBASE_WIDGET):
+ * Coinbase Checkout (COINBASE_WIDGET):
  * - Multi-currency (based on buy options API)
  * - Multiple payment methods (Card, ACH, etc.)
- * - Limit depends on payment method selected in widget
+ * - Limit depends on payment method selected during checkout
  *
  * displayCurrencies memo:
  * - Apple Pay: Always ['USD']
- * - Widget: Uses paymentCurrencies from API (USD, EUR, GBP, etc.)
+ * - Checkout: Uses paymentCurrencies from API (USD, EUR, GBP, etc.)
  *
  * @see hooks/useOnramp.ts for API orchestration
  * @see utils/sharedState.ts for getCurrentWalletAddress() logic
@@ -84,10 +81,10 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { COLORS } from '../../constants/Colors';
 import { TEST_ACCOUNTS } from '../../constants/TestAccounts';
-import { getCountry, getLifetimeTransactionThreshold, getPendingForm, getSandboxMode, getSubdivision, getVerifiedPhone, isPhoneFresh60d, isTestSessionActive, setCountry, setCurrentNetwork, setSandboxMode, setSubdivision } from '../../utils/sharedState';
+import { getCountry, getLifetimeTransactionThreshold, getPendingForm, getSubdivision, getVerifiedPhone, isPhoneFresh60d, isTestSessionActive, setCountry, setCurrentNetwork, setSubdivision } from '../../utils/sharedState';
 import { SwipeToConfirm } from '../ui/SwipeToConfirm';
 import { fetchUserLimits, UserLimit } from '../../utils/fetchUserLimits';
 import { getAccessTokenGlobal } from '../../utils/getAccessTokenGlobal';
@@ -99,7 +96,6 @@ export type OnrampFormData = {
   asset: string;
   network: string;
   address: string;
-  sandbox: boolean;
   paymentMethod: string;
   paymentCurrency: string;
   phoneNumber?: string;
@@ -115,13 +111,9 @@ type OnrampFormProps = {
   isLoadingOptions: boolean;
   getAvailableNetworks: (selectedAsset?: string) => any[];
   getAvailableAssets: (selectedNetwork?: string) => any[];
-  currentQuote: any;
-  isLoadingQuote: boolean;
-  fetchQuote: (formData: any) => void;
   paymentCurrencies: string[];
   amount: string;
   onAmountChange: (amount: string) => void;
-  sandboxMode?: boolean; // Add sandbox prop
   buyConfig?: any;
 };
 
@@ -138,13 +130,9 @@ export function OnrampForm({
   isLoadingOptions,
   getAvailableNetworks,
   getAvailableAssets,
-  currentQuote,
-  isLoadingQuote,
-  fetchQuote,
   paymentCurrencies,
   amount,
   onAmountChange,
-  sandboxMode,
   buyConfig
 }: OnrampFormProps) {
   // Import hooks for production card visibility and Smart Account check
@@ -171,7 +159,6 @@ export function OnrampForm({
   const [userLimits, setUserLimits] = useState<{ weekly: UserLimit; lifetime: UserLimit } | null>(null);
   const [isLoadingLimits, setIsLoadingLimits] = useState(false);
   const [limitsError, setLimitsError] = useState<string | null>(null);
-  const [localSandboxEnabled, setLocalSandboxEnabled] = useState(getSandboxMode());
   const [countryPickerVisible, setCountryPickerVisible] = useState(false);
 const [subPickerVisible, setSubPickerVisible] = useState(false);
 const [country, setCountryLocal] = useState(getCountry());
@@ -218,15 +205,15 @@ const usSubs = useMemo(() => {
     if (prevNetworkRef.current === network) return;
     prevNetworkRef.current = network;
 
-    if (!localSandboxEnabled && isEvmNetwork) {
-      // Only update address for supported EVM networks (Base) in production mode
+    if (isEvmNetwork) {
+      // Only update address for supported EVM networks (Base)
       const { getCurrentWalletAddress } = require('../../utils/sharedState');
       const newAddress = getCurrentWalletAddress();
       if (newAddress && newAddress !== address) {
         onAddressChange(newAddress);
       }
     }
-  }, [network, address, onAddressChange, isEvmNetwork, localSandboxEnabled]);
+  }, [network, address, onAddressChange, isEvmNetwork]);
   
 
   const amountNumber = useMemo(() => {
@@ -238,28 +225,23 @@ const usSubs = useMemo(() => {
   const isAmountValid = Number.isFinite(amountNumber) && amountNumber > 0;
   const isEvmAddressValid = /^0x[0-9a-fA-F]{40}$/.test(address);
 
-  // Use local state as single source of truth for sandbox mode
-  const isSandbox = localSandboxEnabled;
-
-  // Check if Smart Account is available for EVM networks (production only)
+  // Check if Smart Account is available for EVM networks
   // TestFlight reviewers use hardcoded address as their "smart account"
   const isTestFlight = isTestSessionActive();
   const smartAccount = isTestFlight
     ? TEST_ACCOUNTS.wallets.evm  // TestFlight: Use hardcoded address
     : (currentUser?.evmSmartAccounts?.[0] as string | undefined); // Real users: Use CDP Smart Account
-  const needsSmartAccount = !isSandbox && isEvmNetwork;
+  const needsSmartAccount = isEvmNetwork;
   const hasSmartAccount = !!smartAccount;
 
-  const hasValidAddress = isSandbox
-    ? !!address && address.trim().length > 0  // In sandbox, just need any non-empty address
-    : isEvmAddressValid; // In production, need valid EVM address (Base)
+  const hasValidAddress = isEvmAddressValid;
 
   // For production EVM networks, must have Smart Account
   const isFormValid = isAmountValid && !!network && !!asset && hasValidAddress && (!needsSmartAccount || hasSmartAccount);
 
   // User limits validation (Apple Pay + production mode)
   const limitsValidation = useMemo(() => {
-    if (!userLimits || localSandboxEnabled || !isGuestCheckout) {
+    if (!userLimits || !isGuestCheckout) {
       return { isValid: true, error: null, warning: null };
     }
 
@@ -295,7 +277,7 @@ const usSubs = useMemo(() => {
     }
 
     return { isValid: true, error: null, warning: null };
-  }, [userLimits, localSandboxEnabled, isApplePay, amountNumber, isAmountValid]);
+  }, [userLimits, isApplePay, amountNumber, isAmountValid]);
 
   // Update isFormValid to include user limits validation
   const isFormValidWithLimits = isFormValid && limitsValidation.isValid;
@@ -343,34 +325,6 @@ const usSubs = useMemo(() => {
       setPaymentMethod(methods[0]?.value || 'COINBASE_WIDGET');
     }
   }, [methods, paymentMethod]);
-
-  // Initialize sandbox mode from shared state on mount only
-  // After that, local state is the single source of truth
-  useEffect(() => {
-    const sharedSandboxMode = getSandboxMode();
-    console.log('🔄 [SANDBOX INIT] Initializing from shared state:', sharedSandboxMode);
-    setLocalSandboxEnabled(sharedSandboxMode);
-  }, []); // Only run once on mount
-
-  // Reset sandbox mode to true (safe default) when user signs in/out
-  // EXCEPT when there's a pending form - restore user's choice from pending form
-  useEffect(() => {
-    if (currentUser?.userId) {
-      const pending = getPendingForm();
-      if (pending && typeof pending.sandbox === 'boolean') {
-        // User is returning from phone re-verification with a saved form
-        // Restore their sandbox choice from the pending form
-        console.log('👤 [SANDBOX RESTORE] Restoring from pending form, sandbox =', pending.sandbox);
-        setLocalSandboxEnabled(pending.sandbox);
-        setSandboxMode(pending.sandbox);
-      } else {
-        // Fresh login - reset to safe default (sandbox mode)
-        console.log('👤 [SANDBOX RESET] Fresh login, resetting to safe default (true)');
-        setLocalSandboxEnabled(true);
-        setSandboxMode(true);
-      }
-    }
-  }, [currentUser?.userId]);
 
   const getPaymentMethodDisplay = (value: string) => {
     const method = methods.find(m => m.value === value);
@@ -490,13 +444,12 @@ const usSubs = useMemo(() => {
     }
   }, [subPickerVisible]);
 
-  // If user switches to a non-EVM network, clear the address (only in production mode)
-  // In sandbox mode, allow any address for any network
+  // If user switches to a non-EVM network, clear the address
   useEffect(() => {
-    if (!localSandboxEnabled && !isEvmNetwork && address) {
+    if (!isEvmNetwork && address) {
       onAddressChange('');
     }
-  }, [isEvmNetwork, address, onAddressChange, localSandboxEnabled]);
+  }, [isEvmNetwork, address, onAddressChange]);
 
   const getCurrencyLimits = useCallback(() => {
     if (!options?.payment_currencies) return null;
@@ -566,7 +519,7 @@ const usSubs = useMemo(() => {
     const verifiedPhone = getVerifiedPhone();
     const isPhoneFresh = isPhoneFresh60d();
 
-    if (!isGuestCheckout || localSandboxEnabled || !verifiedPhone || !isPhoneFresh) {
+    if (!isGuestCheckout || !verifiedPhone || !isPhoneFresh) {
       setUserLimits(null);
       return;
     }
@@ -606,38 +559,25 @@ const usSubs = useMemo(() => {
     } finally {
       setIsLoadingLimits(false);
     }
-  }, [isApplePay, localSandboxEnabled]);
+  }, [isApplePay]);
 
   // Fetch user limits on mount (Apple Pay + production + verified phone)
   useEffect(() => {
     fetchUserLimitsData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debounced quote fetching and user limits fetching
+  // Quote display removed — USDC/Base gasless, no fees to show
+  // User limits still fetched on debounce
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (amount && asset && network) {
-        const limits = getCurrencyLimits();
-        const quoteMethod = limits?.quotePaymentMethod || 'CARD';
-
-        // Fetch quote
-        fetchQuote?.({
-          amount,
-          asset,
-          network,
-          paymentCurrency,
-          paymentMethod: paymentMethod === 'COINBASE_WIDGET' ? quoteMethod : paymentMethod
-        });
-
         // Fetch user limits (Apple Pay + production + verified phone)
         fetchUserLimitsData();
-      } else {
-        console.log('Missing required fields for quote');
       }
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [amount, asset, network, paymentCurrency, fetchQuote, paymentMethod, getCurrencyLimits, fetchUserLimitsData]);
+  }, [amount, asset, network, paymentCurrency, paymentMethod, getCurrencyLimits, fetchUserLimitsData]);
 
   const amountError = useMemo(() => {
     if (!limits || !amount || !Number.isFinite(amountNumber)) return null;
@@ -664,9 +604,6 @@ const usSubs = useMemo(() => {
       return;
     }
 
-    // localSandboxEnabled is the single source of truth
-    console.log('🔍 [FORM SUBMIT] Submitting with sandbox =', localSandboxEnabled);
-
     onSubmit({
       amount: amount,
       asset,
@@ -674,10 +611,9 @@ const usSubs = useMemo(() => {
       address,
       paymentMethod,
       paymentCurrency,
-      sandbox: localSandboxEnabled,
       agreementAcceptedAt: agreementTimestamp ? new Date(agreementTimestamp).toISOString() : new Date().toISOString(),
     });
-  }, [isFormValidWithLimits, currentQuote, asset, network, address, localSandboxEnabled, paymentMethod, paymentCurrency, onSubmit, agreementTimestamp]);
+  }, [isFormValidWithLimits, asset, network, address, paymentMethod, paymentCurrency, onSubmit, agreementTimestamp]);
   return (
     <ScrollView
       contentContainerStyle={styles.content}
@@ -688,9 +624,9 @@ const usSubs = useMemo(() => {
       bounces
       overScrollMode="always"
     >
-      {/* Buy Card */}
+      {/* Send Card */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Buy</Text>
+        <Text style={styles.cardTitle}>Send</Text>
         <View style={styles.inputRow}>
         <TextInput
           value={amount}
@@ -718,12 +654,12 @@ const usSubs = useMemo(() => {
                   Apple Pay limit: {limits.display}
                 </Text>
               )}
-              {userLimits && !localSandboxEnabled && (
+              {userLimits && (
                 <Text style={styles.limitsText}>
                   User limit: ${userLimits.weekly.remaining}/{userLimits.weekly.limit} {userLimits.weekly.currency} weekly • {userLimits.lifetime.remaining}/{userLimits.lifetime.limit} transactions remaining
                 </Text>
               )}
-              {isLoadingLimits && !localSandboxEnabled && (
+              {isLoadingLimits && (
                 <Text style={[styles.limitsText, { fontStyle: 'italic', color: TEXT_SECONDARY }]}>
                   Loading user limits...
                 </Text>
@@ -737,88 +673,22 @@ const usSubs = useMemo(() => {
           )}
       </View>
 
-      {/* Receive Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Receive</Text>
-        <View style={styles.inputRow}>
-          <View style={styles.receiveAmountContainer}>
-            {isLoadingQuote ? (
-              <ActivityIndicator size="small" color={BLUE} />
-            ) : (
-              <Text style={styles.receiveAmount}>
-                {currentQuote?.purchase_amount?.value || '0'}
-              </Text>
-            )}
-      </View>
-          <View style={styles.assetSelect}>
-            <Text style={styles.assetText}>USDC</Text>
-          </View>
-      </View>
-      </View>
+      {/* Quote display removed — USDC/Base gasless, no fees to show */}
 
       {/* Payment method: Apple Pay only (locked) */}
 
   
-      {/* Sandbox Toggle
-      <View style={styles.switchRow}>
-        <Text style={styles.label}>Sandbox Environment</Text>
-        <Switch
-          value={sandbox}
-          onValueChange={setSandbox}
-          trackColor={{ true: BLUE, false: BORDER }}
-          thumbColor={Platform.OS === "android" ? (sandbox ? "#ffffff" : "#f4f3f4") : undefined}
-        />
-      </View> */}
   
-      {/* Quote Summary */}
-      {currentQuote && (
-        <View style={styles.quoteCard}>
-          <View style={styles.quoteRow}>
-            <Text style={styles.quoteLabel}>Purchase amount</Text>
-            <Text style={styles.quoteValue}>
-              ${currentQuote.payment_subtotal?.value || currentQuote.paymentSubtotal?.value || '0'}
-            </Text>
-      </View>
-          <View style={styles.quoteRow}>
-            <Text style={styles.quoteLabel}>Coinbase fee</Text>
-            <Text style={styles.quoteValue}>
-              ${currentQuote.coinbase_fee?.value || currentQuote.coinbaseFee?.value || '0'}
-            </Text>
-          </View>
-          <View style={styles.quoteRow}>
-            <Text style={styles.quoteLabel}>Network fee</Text>
-            <Text style={styles.quoteValue}>
-              ${currentQuote.network_fee?.value || currentQuote.networkFee?.value || '0'}
-            </Text>
-          </View>
-          <View style={[styles.quoteRow, styles.quoteTotalRow]}>
-            <Text style={styles.quoteTotalLabel}>Total</Text>
-            <Text style={styles.quoteTotalValue}>
-              ${currentQuote.payment_total?.value || currentQuote.paymentTotal?.value || '0'}
-            </Text>
-          </View>
-        </View>
-      )}
-
-        {/* Quote Disclaimer */}
-        {currentQuote && paymentMethod === 'COINBASE_WIDGET' && limits?.quotePaymentMethod && (
-        <View style={styles.disclaimerCard}>
-          <Text style={styles.disclaimerText}>
-            💡 Quote based on {limits.quotePaymentMethod} payment method. 
-            Final pricing may vary if you select a different payment method during checkout.
-          </Text>
-        </View>
-      )}
 
       {/* Wallet Notification */}
-      {!localSandboxEnabled && !isEvmNetwork ? (
+      {!isEvmNetwork ? (
         <View style={styles.notificationCard}>
           <View style={styles.notificationHeader}>
             <Ionicons name="information-circle" size={20} color="#FF8C00" />
             <Text style={styles.notificationTitle}>Network Not Supported</Text>
           </View>
           <Text style={styles.notificationText}>
-            This network is available for Onramp, but Embedded Wallet is not supported at the moment. Try it out in Sandbox mode, or select Base to proceed.
+            This network is available, but Embedded Wallet is not supported at the moment. Please select Base to proceed.
           </Text>
         </View>
       ) : needsSmartAccount && !hasSmartAccount ? (
@@ -828,10 +698,10 @@ const usSubs = useMemo(() => {
             <Text style={[styles.notificationTitle, { color: '#FF6B6B' }]}>Smart Account Required</Text>
           </View>
           <Text style={styles.notificationText}>
-            EVM onramp transactions require a Smart Account to receive funds. Your balances are stored in the Smart Account. Please ensure your Embedded Wallet is properly initialized.
+            EVM transactions require a Smart Account to receive funds. Your balances are stored in the Smart Account. Please ensure your Embedded Wallet is properly initialized.
           </Text>
         </View>
-      ) : !localSandboxEnabled && !hasValidAddress ? (
+      ) : !hasValidAddress ? (
         <View style={[styles.notificationCard, styles.errorCard]}>
           <View style={styles.notificationHeader}>
             <Ionicons name="alert-circle" size={20} color="#FF6B6B" />
@@ -839,31 +709,6 @@ const usSubs = useMemo(() => {
           </View>
           <Text style={styles.notificationText}>
             Connect a valid EVM address to continue
-          </Text>
-        </View>
-      ) : localSandboxEnabled && !address ? (
-        <View style={[styles.notificationCard, styles.errorCard]}>
-          <View style={styles.notificationHeader}>
-            <Ionicons name="alert-circle" size={20} color="#FF6B6B" />
-            <Text style={[styles.notificationTitle, { color: '#FF6B6B' }]}>Address Required</Text>
-          </View>
-          <Text style={styles.notificationText}>
-            Enter a wallet address in Profile → Sandbox Wallet, or connect an Embedded Wallet to continue testing.
-          </Text>
-        </View>
-      ) : localSandboxEnabled ? (
-        <View style={[styles.notificationCard, styles.sandboxCard]}>
-          <View style={styles.notificationHeader}>
-            <Ionicons name="flask" size={20} color={BLUE} />
-            <Text style={[styles.notificationTitle, { color: BLUE }]}>Sandbox Mode</Text>
-          </View>
-          <Text style={styles.notificationText}>
-            Testing with address:{' '}
-            <Text style={styles.addressMono}>{address}</Text>
-          </Text>
-
-          <Text style={[styles.notificationText, styles.italicNote]}>
-            Head to the <Text style={styles.badgeProd}>Wallet</Text> page to override with a manual wallet address.
           </Text>
         </View>
       ) : isSignedIn ? (
@@ -919,7 +764,7 @@ const usSubs = useMemo(() => {
       {/* Terms Agreement */}
       <View style={styles.termsContainer}>
         <Text style={styles.termsText}>
-          By proceeding, I agree to Coinbase's{' '}
+          By proceeding, I agree to Coinbase&apos;s{' '}
           <Text style={styles.termsLink} onPress={() => Linking.openURL('https://www.coinbase.com/legal/guest-checkout/us')}>Guest Checkout Terms</Text>,{' '}
           <Text style={styles.termsLink} onPress={() => Linking.openURL('https://www.coinbase.com/legal/user_agreement/united_states')}>User Agreement</Text>, and{' '}
           <Text style={styles.termsLink} onPress={() => Linking.openURL('https://www.coinbase.com/legal/privacy')}>Privacy Policy</Text>
@@ -1550,11 +1395,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#FF6B6B',
     backgroundColor: '#FF6B6B' + '08', // Very light red tint
-  },
-  sandboxCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: BLUE,
-    backgroundColor: BLUE + '08', // Very light blue tint
   },
   productionCard: {
     borderLeftWidth: 4,

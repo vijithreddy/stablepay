@@ -6,13 +6,46 @@ import { authenticatedFetch } from "./authenticatedFetch";
  * 1. Enhanced request logging (method, headers, body preview)
  * 2. Response cloning for safe logging
  * 3. Proper error re-throwing for UI handling
- * 4. Test mode: Server automatically applies sandbox mode for TestFlight tokens
+ * 4. Test mode: Server handles TestFlight tokens appropriately
  */
 
 export async function createGuestCheckoutOrder(payload: any) {
   try {
     const method = payload.paymentMethod?.includes('GOOGLE') ? 'Google Pay' : 'Apple Pay';
     console.log(`📤 [API] createGuestCheckoutOrder (${method})`);
+
+    // Field-level logging for debugging API errors
+    console.log('[StablePay] createGuestCheckoutOrder fields:');
+    console.log('  paymentAmount:', JSON.stringify(payload.paymentAmount));
+    console.log('  paymentCurrency:', JSON.stringify(payload.paymentCurrency));
+    console.log('  purchaseCurrency:', JSON.stringify(payload.purchaseCurrency));
+    console.log('  paymentMethod:', JSON.stringify(payload.paymentMethod));
+    console.log('  destinationNetwork:', JSON.stringify(payload.destinationNetwork));
+    console.log('  destinationAddress:', JSON.stringify(payload.destinationAddress));
+    console.log('  email:', JSON.stringify(payload.email));
+    console.log('  phoneNumber:', JSON.stringify(payload.phoneNumber));
+    console.log('  partnerUserRef:', JSON.stringify(payload.partnerUserRef));
+
+    // Validate all required string fields before hitting API
+    const requiredStringFields: Record<string, any> = {
+      paymentAmount: payload.paymentAmount,
+      paymentCurrency: payload.paymentCurrency,
+      purchaseCurrency: payload.purchaseCurrency,
+      paymentMethod: payload.paymentMethod,
+      destinationNetwork: payload.destinationNetwork,
+      destinationAddress: payload.destinationAddress,
+      email: payload.email,
+      phoneNumber: payload.phoneNumber,
+      partnerUserRef: payload.partnerUserRef,
+    };
+
+    for (const [fieldName, fieldValue] of Object.entries(requiredStringFields)) {
+      if (typeof fieldValue !== 'string' || fieldValue.length === 0) {
+        throw new Error(
+          `[StablePay] createGuestCheckoutOrder: field "${fieldName}" is invalid: ${JSON.stringify(fieldValue)}`
+        );
+      }
+    }
 
     const response = await authenticatedFetch(`${BASE_URL}/server/api`, {
       method: "POST",

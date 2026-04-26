@@ -10,7 +10,7 @@ export { SupportEmailButton } from './ui/SupportEmailButton';
 export { SwipeToConfirm } from './ui/SwipeToConfirm';
 
 
-// Onramp Components
+// StablePay Components
 export { APIGuestCheckoutWidget } from './onramp/APIGuestCheckoutWidget';
 export { OnrampForm } from './onramp/OnrampForm';
 

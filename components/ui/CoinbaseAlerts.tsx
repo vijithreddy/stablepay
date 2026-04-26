@@ -2,9 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import { Animated, Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS } from '../../constants/Colors';
-
-const { BLUE, DARK_BG, CARD_BG, BORDER, TEXT_PRIMARY, TEXT_SECONDARY, WHITE, BLACK } = COLORS;
+import { Paper } from '../../constants/PaperTheme';
 
 type AlertType = 'success' | 'error' | 'info';
 
@@ -33,9 +31,9 @@ export function CoinbaseAlert({
 }: CoinbaseAlertProps) {
   const getIcon = () => {
     switch (type) {
-      case 'success': return { name: 'checkmark-circle' as const, color: '#4ADE80' };
-      case 'error': return { name: 'close-circle' as const, color: '#FF6B6B' };
-      case 'info': return { name: 'information-circle' as const, color: BLUE };
+      case 'success': return { name: 'checkmark-circle' as const, color: Paper.colors.success };
+      case 'error': return { name: 'close-circle' as const, color: Paper.colors.error };
+      case 'info': return { name: 'information-circle' as const, color: Paper.colors.orange };
     }
   };
 
@@ -71,7 +69,7 @@ export function CoinbaseAlert({
     >
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' }}>
         <Animated.View
-              style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: backdropOpacity }]}
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(26, 26, 46, 0.5)', opacity: backdropOpacity }]}
               pointerEvents="auto"
             >
               <Pressable style={StyleSheet.absoluteFillObject} onPress={onConfirm} />
@@ -138,13 +136,13 @@ export function showCoinbaseAlert(
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(26, 26, 46, 0.5)',
     justifyContent: 'flex-end',
   },
   alertCard: {
-    backgroundColor: CARD_BG,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: Paper.colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 34,
@@ -154,7 +152,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: BORDER,
+    backgroundColor: Paper.colors.border,
     borderRadius: 2,
     marginBottom: 20,
     alignSelf: 'center',
@@ -166,13 +164,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     marginBottom: 8,
     textAlign: 'center',
   },
   message: {
     fontSize: 16,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 32,
@@ -186,7 +184,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   button: {
-    backgroundColor: BLUE,
+    backgroundColor: Paper.colors.orange,
     paddingHorizontal: 48,
     paddingVertical: 16,
     borderRadius: 25,
@@ -194,7 +192,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   buttonInRow: {
-    backgroundColor: BLUE,
+    backgroundColor: Paper.colors.orange,
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 25,
@@ -202,12 +200,12 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   buttonSecondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: Paper.colors.background,
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 25,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: Paper.colors.border,
     flex: 1,
     minWidth: 120,
   },
@@ -216,13 +214,13 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   buttonText: {
-    color: WHITE,
+    color: Paper.colors.white,
     fontSize: 18,
     fontWeight: '600',
     textAlign: 'center',
   },
   buttonTextSecondary: {
-    color: TEXT_PRIMARY,
+    color: Paper.colors.sand,
     fontSize: 18,
     fontWeight: '600',
     textAlign: 'center',

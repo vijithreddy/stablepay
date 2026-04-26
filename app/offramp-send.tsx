@@ -1,7 +1,7 @@
 /**
  * Offramp Send Screen
  *
- * Reached via deep link: onrampdemo://offramp-send?partnerUserRef=<userId>
+ * Reached via deep link: stablepay://offramp-send?partnerUserRef=<userId>
  * after the user completes the Coinbase-hosted sell flow.
  *
  * Flow:
@@ -15,7 +15,7 @@
  */
 
 import { CoinbaseAlert } from '@/components/ui/CoinbaseAlerts';
-import { COLORS } from '@/constants/Colors';
+import { Paper } from '@/constants/PaperTheme';
 import { fetchOfframpTransaction, OfframpTransaction } from '@/utils/fetchOfframpTransaction';
 import { getPendingOfframpBalance, isTestSessionActive } from '@/utils/sharedState';
 import {
@@ -28,15 +28,13 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { parseEther, parseUnits } from 'viem';
-
-const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BLUE, WHITE, BORDER } = COLORS;
 
 // Fallback decimals for known assets when the stored balance doesn't include them
 function getKnownDecimals(asset: string): number {
@@ -236,11 +234,11 @@ export default function OfframpSendScreen() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={TEXT_PRIMARY} />
+          <Ionicons name="chevron-back" size={24} color={Paper.colors.sand} />
         </Pressable>
         <Text style={styles.headerTitle}>Send to Coinbase</Text>
         <View style={{ width: 40 }} />
@@ -251,7 +249,7 @@ export default function OfframpSendScreen() {
         {/* Loading */}
         {loading && (
           <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={BLUE} />
+            <ActivityIndicator size="large" color={Paper.colors.orange} />
             <Text style={styles.loadingText}>Confirming your transaction with Coinbase...</Text>
             <Text style={[styles.loadingText, { fontSize: 12, marginTop: 4 }]}>This may take a few seconds</Text>
           </View>
@@ -274,9 +272,9 @@ export default function OfframpSendScreen() {
           <>
             {/* Info banner */}
             <View style={styles.infoBanner}>
-              <Ionicons name="information-circle" size={18} color={BLUE} style={{ marginTop: 1 }} />
+              <Ionicons name="information-circle" size={18} color={Paper.colors.orange} style={{ marginTop: 1 }} />
               <Text style={styles.infoText}>
-                Send the exact amount below to Coinbase's address. You have 30 minutes to complete this step.
+                Send the exact amount below to Coinbase&apos;s address. You have 30 minutes to complete this step.
               </Text>
             </View>
 
@@ -290,7 +288,7 @@ export default function OfframpSendScreen() {
                 on {transaction.network.charAt(0).toUpperCase() + transaction.network.slice(1)}
               </Text>
               <View style={styles.lockedBadge}>
-                <Ionicons name="lock-closed" size={12} color={TEXT_SECONDARY} />
+                <Ionicons name="lock-closed" size={12} color={Paper.colors.sand} />
                 <Text style={styles.lockedText}>Amount set by Coinbase — cannot be changed</Text>
               </View>
             </View>
@@ -304,15 +302,15 @@ export default function OfframpSendScreen() {
 
             {/* Send button */}
             <Pressable
-              style={[styles.button, styles.sendButton, sending && styles.buttonDisabled]}
+              style={({ pressed }) => [styles.button, styles.sendButton, sending && styles.buttonDisabled, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
               onPress={handleSend}
               disabled={sending}
             >
               {sending ? (
-                <ActivityIndicator size="small" color={WHITE} />
+                <ActivityIndicator size="small" color={Paper.colors.white} />
               ) : (
                 <>
-                  <Ionicons name="send" size={16} color={WHITE} style={{ marginRight: 8 }} />
+                  <Ionicons name="send" size={16} color={Paper.colors.white} style={{ marginRight: 8 }} />
                   <Text style={styles.buttonText}>
                     Send {transaction.sell_amount.value} {transaction.asset} to Coinbase
                   </Text>
@@ -342,7 +340,7 @@ export default function OfframpSendScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -351,7 +349,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: Paper.colors.border,
   },
   backButton: {
     padding: 8,
@@ -360,7 +358,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   scrollContent: {
     padding: 16,
@@ -372,35 +370,38 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   loadingText: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 14,
   },
   infoBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#1a2a3a',
+    backgroundColor: Paper.colors.orangeLight,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: BLUE,
+    borderColor: Paper.colors.orange,
   },
   infoText: {
     flex: 1,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 13,
     lineHeight: 19,
   },
   card: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
+    backgroundColor: Paper.colors.surface,
+    borderRadius: 20,
     padding: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
     gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   sectionTitle: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -408,17 +409,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   amountLarge: {
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     fontSize: 36,
     fontWeight: '700',
   },
   assetLabel: {
     fontSize: 20,
     fontWeight: '500',
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
   },
   networkLabel: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 14,
   },
   lockedBadge: {
@@ -428,27 +429,27 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: BORDER,
+    borderTopColor: Paper.colors.border,
   },
   lockedText: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 12,
   },
   addressText: {
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     fontSize: 15,
     fontFamily: 'monospace' as any,
     fontWeight: '500',
   },
   helper: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 12,
     lineHeight: 18,
   },
   button: {
-    backgroundColor: BLUE,
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: Paper.colors.orange,
+    borderRadius: 14,
+    height: 54,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
@@ -461,12 +462,12 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   buttonText: {
-    color: WHITE,
+    color: Paper.colors.white,
     fontSize: 15,
     fontWeight: '600',
   },
   disclaimer: {
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,

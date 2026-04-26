@@ -2,11 +2,10 @@ import { useSignInWithEmail, useLinkEmail, useIsSignedIn } from '@coinbase/cdp-h
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CoinbaseAlert } from '../components/ui/CoinbaseAlerts';
-import { COLORS } from '../constants/Colors';
-
-const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, BLUE, WHITE } = COLORS;
+import { Paper } from '../constants/PaperTheme';
 
 export default function EmailVerifyScreen() {
   const router = useRouter();
@@ -104,11 +103,11 @@ export default function EmailVerifyScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={TEXT_PRIMARY} />
+          <Ionicons name="chevron-back" size={24} color={Paper.colors.navy} />
         </Pressable>
       </View>
 
@@ -137,7 +136,7 @@ export default function EmailVerifyScreen() {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="your.email@example.com"
-                placeholderTextColor={TEXT_SECONDARY}
+                placeholderTextColor={Paper.colors.sandLight}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -152,7 +151,7 @@ export default function EmailVerifyScreen() {
               disabled={!isEmailValid || sending}
             >
               {sending ? (
-                <ActivityIndicator color={WHITE} />
+                <ActivityIndicator color={Paper.colors.white} />
               ) : (
                 <Text style={styles.continueButtonText}>Continue</Text>
               )}
@@ -175,7 +174,7 @@ export default function EmailVerifyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -186,6 +185,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginRight: 8,
+    color: Paper.colors.sand,
   },
   content: {
     flex: 1,
@@ -199,15 +199,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     textAlign: 'center',
     marginBottom: 16,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: TEXT_SECONDARY,
+    fontSize: 14,
+    color: Paper.colors.sand,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 40,
@@ -218,33 +219,28 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   emailInput: {
-    backgroundColor: CARD_BG,
-    borderWidth: 2,
-    borderColor: BLUE,
-    borderRadius: 12,
+    backgroundColor: Paper.colors.surface,
+    borderWidth: 1,
+    borderColor: Paper.colors.border,
+    borderRadius: Paper.radius.md,
     paddingHorizontal: 16,
-    paddingVertical: 20,
-    fontSize: 18,
-    color: TEXT_PRIMARY,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: Paper.colors.navy,
     textAlign: 'center',
   },
   continueButton: {
-    backgroundColor: BLUE,
-    borderRadius: 25,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
+    backgroundColor: Paper.colors.orange,
+    height: 54,
+    borderRadius: Paper.radius.md,
     width: '100%',
     alignItems: 'center',
-    shadowColor: BLUE,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    justifyContent: 'center',
   },
   continueButtonText: {
-    color: WHITE,
-    fontSize: 18,
-    fontWeight: '600',
+    color: Paper.colors.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
   disabledButton: {
     opacity: 0.5,

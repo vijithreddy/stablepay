@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CoinbaseAlert } from '../components/ui/CoinbaseAlerts';
-import { COLORS } from '../constants/Colors';
+import { Paper } from '../constants/PaperTheme';
 import { TEST_ACCOUNTS } from '../constants/TestAccounts';
 import { PHONE_COUNTRIES } from '../constants/PhoneCountries';
 import { clearPendingForm, markPhoneVerifyCanceled } from '../utils/sharedState';
 import { useSignInWithSms, useLinkSms, useCurrentUser, useIsSignedIn, useSignOut } from '@coinbase/cdp-hooks';
 
-const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, BLUE, WHITE } = COLORS;
 
 // Use shared phone countries constant
 const SUPPORTED_COUNTRIES = PHONE_COUNTRIES;
@@ -294,7 +294,7 @@ export default function PhoneVerifyScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={TEXT_PRIMARY} />
+          <Ionicons name="chevron-back" size={24} color={Paper.colors.sand} />
         </Pressable>
       </View>
 
@@ -337,14 +337,14 @@ export default function PhoneVerifyScreen() {
               >
                 <Text style={styles.flagEmoji}>{selectedCountry.flag}</Text>
                 <Text style={styles.countryCode}>{selectedCountry.code}</Text>
-                <Ionicons name="chevron-down" size={16} color={TEXT_SECONDARY} />
+                <Ionicons name="chevron-down" size={16} color={Paper.colors.sand} />
               </Pressable>
               <TextInput
                 style={styles.phoneInput}
                 value={phoneNumber}
                 onChangeText={handlePhoneChange}
                 placeholder={`Phone number`}
-                placeholderTextColor={TEXT_SECONDARY}
+                placeholderTextColor={Paper.colors.sand}
                 keyboardType="phone-pad"
                 editable={!sending}
                 autoFocus
@@ -357,7 +357,7 @@ export default function PhoneVerifyScreen() {
               disabled={!isPhoneValid || sending}
             >
               {sending ? (
-                <ActivityIndicator color={WHITE} />
+                <ActivityIndicator color={Paper.colors.white} />
               ) : (
                 <Text style={styles.continueButtonText}>Continue</Text>
               )}
@@ -381,7 +381,7 @@ export default function PhoneVerifyScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Country</Text>
               <Pressable onPress={() => setCountryPickerVisible(false)}>
-                <Ionicons name="close" size={28} color={TEXT_PRIMARY} />
+                <Ionicons name="close" size={28} color={Paper.colors.navy} />
               </Pressable>
             </View>
             <ScrollView style={styles.countryList}>
@@ -416,7 +416,7 @@ export default function PhoneVerifyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -445,13 +445,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     textAlign: 'center',
     marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 40,
@@ -477,10 +477,10 @@ const styles = StyleSheet.create({
   phoneInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: CARD_BG,
+    backgroundColor: Paper.colors.surface,
     borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
+    borderColor: Paper.colors.border,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 16,
     marginBottom: 32,
@@ -492,7 +492,7 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     marginRight: 12,
     borderRightWidth: 1,
-    borderRightColor: BORDER,
+    borderRightColor: Paper.colors.border,
   },
   flagEmoji: {
     fontSize: 24,
@@ -500,33 +500,34 @@ const styles = StyleSheet.create({
   },
   countryCode: {
     fontSize: 18,
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     marginRight: 4,
     fontWeight: '500',
   },
   phoneInput: {
     flex: 1,
     fontSize: 18,
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
     padding: 0,
   },
   continueButton: {
-    backgroundColor: BLUE,
-    borderRadius: 25,
-    paddingVertical: 16,
+    backgroundColor: Paper.colors.orange,
+    height: 54,
+    borderRadius: 14,
     paddingHorizontal: 32,
     width: '100%',
     alignItems: 'center',
-    shadowColor: BLUE,
+    justifyContent: 'center',
+    shadowColor: Paper.colors.orange,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
   continueButtonText: {
-    color: WHITE,
-    fontSize: 18,
-    fontWeight: '600',
+    color: Paper.colors.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
   disabledButton: {
     opacity: 0.5,
@@ -541,14 +542,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: DARK_BG,
+    backgroundColor: Paper.colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     height: '70%',
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: BORDER,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -556,12 +553,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: Paper.colors.border,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: TEXT_PRIMARY,
+    fontWeight: '700',
+    color: Paper.colors.navy,
   },
   countryList: {
     flex: 1,
@@ -571,10 +568,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
+    borderBottomColor: Paper.colors.border,
   },
   selectedCountryItem: {
-    backgroundColor: CARD_BG,
+    backgroundColor: Paper.colors.surface,
   },
   countryItemFlag: {
     fontSize: 24,
@@ -583,11 +580,11 @@ const styles = StyleSheet.create({
   countryItemName: {
     flex: 1,
     fontSize: 16,
-    color: TEXT_PRIMARY,
+    color: Paper.colors.navy,
   },
   countryItemCode: {
     fontSize: 16,
-    color: TEXT_SECONDARY,
+    color: Paper.colors.sand,
     marginRight: 8,
   },
   applePayBadge: {
