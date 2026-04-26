@@ -79,7 +79,7 @@ export async function seedDemoContacts(): Promise<void> {
     },
     {
       name: 'Alice',
-      address: '0xEA51ddA8D548fef9F036ef842DF69eCD8bd3Eff4',
+      address: '0xace58c9c25C53bA2694521296d80FEFCB1C507AD',
       emoji: 'A',
     },
   ];

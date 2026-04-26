@@ -1,394 +1,217 @@
-# Coinbase Onramp V2 Demo App
-![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+# StablePay
 
-A React Native + Expo mobile app demonstrating Coinbase's Onramp v2 API with CDP Embedded Wallets, Apple Pay integration, and real-time push notifications.
+Instant USDC payments on Base. A Nacha Smarter Faster Payments conference demo.
 
-Install Testflight and try the mobile app using this [invite link](https://testflight.apple.com/join/s4VZYcej)!
+**Narrative**: "Venmo with stablecoins — instant P2P USDC payments on Base."
 
+## What it does
 
-
-## Features
-
-- 🔐 **Embedded Wallet**: Automatic wallet creation via CDP
-- 💳 **Multiple Payment Methods**: Apple Pay and Coinbase Widget
-- 🌐 **Multi-Network**: EVM networks: Base Mainnet (gasless for USDC/EURC/cbBTC via Paymaster), Base Sepolia, Ethereum Mainnet, Ethereum Sepolia; Solana networks: Solana Mainnet, Solana Devnet.
-- 🔔 **Push Notifications**: Real-time transaction updates
-- 💸 **Gasless Transfers**: Paymaster support on Base (USDC, EURC, cbBTC)
-- 📜 **Transaction History**: Complete purchase tracking
-- 🧪 **Sandbox Mode**: Test without real transactions
-- 📊 **User Limits API**: Real-time weekly spending & lifetime transaction limits for Apple Pay
-- 🆘 **Failed Transaction Support**: Email support flow for failed transactions
-- 💱 **Crypto Cash Out (Offramp)**: Sell crypto back to fiat via a Coinbase-hosted flow, with on-chain transfer executed directly from the embedded wallet
-
-### Video Demo
-#### Headless Apple Pay Seamless Onramp Transaction Flow
-https://github.com/user-attachments/assets/e57f32fc-fb19-4761-ac6e-a42701973e58
-
-
-#### Embedded Wallet Transfer & Export Flow
-https://github.com/user-attachments/assets/f1e5f3b3-5331-49d9-bd4e-36fd630697d9
-
-
-
+1. **Fund** — Add USDC to your wallet via Apple Pay (gasless on Base)
+2. **Send** — Send USDC to any contact instantly (gasless via Paymaster)
+3. **Track** — See all activity in a unified feed
 
 ## Tech Stack
 
-- React Native + Expo Router
-- TypeScript
-- Onramp V2 Apple Pay integration
-- CDP React Native SDK
-- Node.js/Express backend
-- Expo Notifications
+- **Frontend**: React Native + Expo 54 + TypeScript
+- **Backend**: Node.js/Express (deployed on Vercel)
+- **Wallets**: CDP Embedded Wallets (Smart Account / ERC-4337)
+- **Payments**: Apple Pay via Coinbase Onramp V2 API
+- **Transfers**: Gasless ERC-20 transfers via Coinbase Paymaster
+- **Notifications**: Push via APNs / Expo Push Service
+- **Chain**: Base Mainnet only
 
-## Main User Sequence
-<img width="3810" height="4043" alt="Onramp Mobile V2 Demo Sequence Diagram" src="https://github.com/user-attachments/assets/662f491f-e557-4774-acb0-d6ec5157542c" />
+## Architecture
+
+```
+StablePay App (React Native)
+├── Apple Pay → Hidden WebView → Coinbase Onramp API
+├── Send USDC → sendUserOperation → Base (gasless)
+├── Balance → /balances/evm endpoint
+└── Push Notifications → APNs / Expo
+
+Express Backend (Vercel)
+├── /server/api → JWT proxy to Coinbase CDP API
+├── /balances/evm → Token balances with USD prices
+├── /webhooks/onramp → Onramp completion notifications
+├── /webhooks/onchain → USDC transfer notifications
+└── /push-tokens → Device token storage
+```
+
+
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js v20+
-- iOS device or simulator
+- iOS device (not simulator — Apple Pay requires real device)
 - [Coinbase CDP account](https://portal.cdp.coinbase.com/)
+- Apple Developer account (for device builds)
 
-### 1. Installation
+### 1. Install
 
 ```bash
-# Clone and install dependencies
-git clone <your-repo-url>
-cd onramp-v2-new
+git clone https://github.com/vijithreddy/stablepay.git
+cd stablepay
 npm install
 cd server && npm install && cd ..
 ```
 
-### 2. Get Your CDP Credentials
-
-1. Go to [CDP Portal](https://portal.cdp.coinbase.com/)
-2. Create a new project (or use existing)
-3. Copy your **Project ID**
-4. Generate **API Keys** (you'll need the key name and private key in `Ed25519`)
-
-### 3. Environment Setup
-
-#### Root `.env`
+### 2. Environment Setup
 
 ```bash
-# Copy template
 cp .env.example .env
-```
-
-Edit `.env`:
-```bash
-# CDP Project ID from portal
-EXPO_PUBLIC_CDP_PROJECT_ID=your_project_id_here
-
-# Local server (will update with ngrok URL in step 5)
-EXPO_PUBLIC_BASE_URL=http://localhost:3000
-
-# Crypto implementation selector
-# - Set to 'true' for Expo Go (npx expo start)
-# - Set to 'false' for development builds (npx expo run:ios)
-EXPO_PUBLIC_USE_EXPO_CRYPTO=true
-```
-
-#### Server `.env`
-
-```bash
-# Copy template
 cp server/.env.example server/.env
 ```
 
-Edit `server/.env`:
-```bash
-# CDP API Credentials from portal
+**Root `.env`**:
+```
+EXPO_PUBLIC_CDP_PROJECT_ID=your_project_id
+EXPO_PUBLIC_BASE_URL=http://YOUR_LOCAL_IP:3000
+EXPO_PUBLIC_USE_EXPO_CRYPTO=false
+```
+
+**Server `.env`**:
+```
 CDP_API_KEY_ID=your_api_key_id
-CDP_API_KEY_SECRET=your_private_key_here
-
-# Optional: Webhook signing secret (for push notifications)
+CDP_API_KEY_SECRET=your_private_key
 WEBHOOK_SECRET=your_webhook_secret
-
-# Optional: APNs credentials (for production iOS push notifications)
-# Leave empty to use Expo Push Service in development
-APNS_KEY_ID=
-APNS_TEAM_ID=
-APNS_KEY=
-
-# Optional: Database URL (for production deployment)
-# Leave empty to use in-memory storage in development
-# Supports Redis, MongoDB, or any compatible database
-DATABASE_URL=
+ONCHAIN_WEBHOOK_SECRET=your_onchain_webhook_secret
 ```
 
-### 4. Start Development Servers
+> **IMPORTANT**: `EXPO_PUBLIC_USE_EXPO_CRYPTO` must be `false` for device builds. Setting it to `true` breaks wallet creation with `crypto.subtle is not available`.
 
-Open **two terminal windows**:
-
-```bash
-# Terminal 1: Start backend server
-cd server
-npm run dev
-# Should see: "Server running on http://localhost:3000"
-```
+### 3. Get Your Local IP
 
 ```bash
-# Terminal 2: Start Expo
-
-# Option A: Expo Go (requires USE_EXPO_CRYPTO=true in .env)
-npx expo start
-# Scan QR code with Expo Go app or press 'i' for iOS simulator
-
-# Option B: Development build (set USE_EXPO_CRYPTO=false in .env)
-npx expo run:ios
-# Builds and installs native iOS app with full crypto support
-```
-
-### 5. Setup Webhooks for Push Notifications (Optional)
-
-**Note**: Webhooks enable real-time push notifications for transaction updates. The app works fully without webhooks, but you won't receive push notifications.
-
-**⚠️ Localhost Limitation**: Coinbase webhook servers cannot reach `localhost`. To enable webhooks, you need a publicly accessible URL.
-
-**Options:**
-- **Development**: Use a tunneling service (ngrok, localtunnel, etc.) to expose your local server
-- **Production**: Deploy to a hosting platform (Vercel, Railway, Render, etc.)
-
-**Setup steps:**
-
-1. **Get a public URL** for your backend (e.g., `https://your-domain.com` or `webhook.site`)
-
-2. **Update `.env`**:
-   ```bash
-   EXPO_PUBLIC_BASE_URL=https://your-public-url
-   ```
-
-3. **Create webhook subscription**: Follow [CDP webhook documentation](https://docs.cdp.coinbase.com/onramp-&-offramp/webhooks#create-a-webhook-subscription) using your webhook URL: `https://your-public-url/webhooks/onramp`
-
-4. **Restart Expo** (press `r` in terminal)
-
-**Testing on physical device without webhooks:**
-```bash
-# Get your local network IP
 ipconfig getifaddr en0
-# Update .env: EXPO_PUBLIC_BASE_URL=http://192.168.1.100:3000
 ```
 
-**⚠️ iOS Simulator**: Push notifications do NOT work on iOS Simulator. Use a physical device for testing.
+Update `EXPO_PUBLIC_BASE_URL` in `.env` with `http://YOUR_IP:3000`.
 
-### 6. Run the App
+### 4. Start
 
-1. Open **Expo Go** app on your iOS device or iOS Simulator
-2. Scan the QR code from Terminal 2
-3. App will load on your device or simulator
+```bash
+# Terminal 1 — Backend
+cd server && npm run dev
 
-**Push notifications work automatically** via Expo Push Service - no additional setup needed!
+# Terminal 2 — App (device build)
+npx expo prebuild --clean
+npx expo run:ios --device
+```
 
-## Using the App
+### 5. Demo Flow
 
-### First Time Setup
+1. Open app → sign in with email
+2. Verify phone (required for Apple Pay)
+3. Tap "Add USDC via Apple Pay" → select amount → Face ID
+4. USDC lands in wallet → balance updates
+5. Select a contact → enter amount → "Send to Bob"
+6. Confirm → USDC sent gaslessly on Base
+7. Check Activity tab → see fund + send events
 
-1. **Sign In**: Enter your email → Verify code
-2. **Wallet Created**: Embedded wallet auto-created
-3. **Complete Profile**:
-   - Verify phone (optional for testing)
-   - Select region
-   - Select Sandbox / Production mode for Onramp transaction
+## Key Design Decisions
 
-### Making a Purchase
-
-1. **Home Tab**: Fill out onramp form
-   - Select network (Base, Ethereum, Solana)
-   - Select asset (USDC, ETH, SOL, etc.)
-   - Enter amount
-2. **Choose Payment**:
-   - **Apple Pay**: Native iOS payment
-   - **Coinbase Widget**: Opens widget on default browser
-3. **Complete Purchase**
-4. **Receive Notification**: Transaction status notification on Production
-
-### Sandbox Mode
-
-Test without real transactions:
-
-1. Go to **Profile Tab**
-2. Toggle **Sandbox Mode** ON
-3. Features enabled:
-   - Optional phone verification
-   - Any wallet address override accepted
-   - No real blockchain transactions
-   - Email verification still required for server authentication
-
-> **Note**: Sandbox mode auto-resets on app restart for safety.
-
-### Cashing Out (Offramp)
-
-Convert crypto in your mainnet wallet back to fiat:
-
-1. Go to **Profile Tab** → scroll to your mainnet balances
-2. Tap **Cash Out (Offramp)** on any balance row (Base, Ethereum, or Solana)
-3. Complete the Coinbase-hosted sell flow in the browser — select amount, payment method, and confirm
-4. After tapping "Cash out now", the app reopens automatically
-5. Review the locked amount and destination address (set by Coinbase)
-6. Tap **Send Now** to execute the on-chain transfer from your embedded wallet to Coinbase
-
-> **Note**: You have 30 minutes to complete the on-chain send after confirming in the Coinbase widget. Offramp is mainnet-only and requires a real wallet balance.
-
-#### Offramp Cash Out Demo
-https://github.com/user-attachments/assets/445e487d-50f6-443b-8072-e4e178668ac7
+- **USDC only** — no asset selector, no ETH/SOL
+- **Base only** — no network selector
+- **Apple Pay only** — no Coinbase Widget, no Google Pay
+- **Production mode only** — no sandbox toggle
+- **Gasless** — all USDC transfers on Base use Coinbase Paymaster
+- **Smart Account** — balances stored in ERC-4337 Smart Account, not EOA
+- **Phone verification** — collected on first Apple Pay attempt via CDP `useLinkSms`, cached 60 days
 
 ## Project Structure
 
 ```
-/app/                 # Expo Router pages
-  ├─ (tabs)/          # Bottom tab navigation
-  │   ├─ index.tsx    # Home: Onramp form
-  │   ├─ profile.tsx  # Settings & wallet
-  │   └─ history.tsx  # Transaction history
-  ├─ auth/            # Email/phone verification
-  └─ transfer.tsx     # Token transfer
+app/
+├── (tabs)/
+│   ├── index.tsx      # Pay screen (fund + send)
+│   ├── history.tsx    # Activity feed
+│   └── profile.tsx    # Wallet + sign out
+├── auth/login.tsx     # Email login
+├── email-verify.tsx   # Email entry
+├── email-code.tsx     # Email OTP
+├── phone-verify.tsx   # Phone entry
+└── phone-code.tsx     # Phone OTP
 
-/components/          # React components
-  ├─ onramp/          # Onramp-specific UI
-  └─ ui/              # Reusable UI components
+components/
+├── onramp/
+│   ├── OnrampForm.tsx              # Hidden form (state management)
+│   ├── APIGuestCheckoutWidget.tsx   # Hidden WebView (Apple Pay)
+│   └── PhoneVerificationSheet.tsx   # Phone verification bottom sheet
+└── ui/
+    ├── ContactPicker.tsx    # Contact list with selection
+    ├── AddContactSheet.tsx  # Add new contact modal
+    ├── ConfirmSendSheet.tsx # Send confirmation modal
+    ├── FundSheet.tsx        # Fund amount picker modal
+    ├── AnimatedPressable.tsx # Reanimated press button
+    ├── PaperButton.tsx      # Themed button variants
+    ├── Wordmark.tsx         # StablePay logo
+    └── CoinbaseAlerts.tsx   # Alert modal
 
-/hooks/               # Custom hooks
-  └─ useOnramp.ts     # Onramp logic & API calls
+hooks/
+└── useOnramp.ts    # Apple Pay flow orchestration
 
-/utils/               # Helper functions
-  ├─ sharedState.ts   # Global state
-  ├─ create*.ts       # Onramp v2 API
-  └─ fetch*.ts        # Onramp v1 API
+utils/
+├── contacts.ts          # Contact CRUD (AsyncStorage)
+├── activity.ts          # Activity feed (AsyncStorage)
+├── phoneVerification.ts # Phone cache (60-day TTL)
+├── sharedState.ts       # Global state (wallet, network)
+└── supportEmail.ts      # Support email utility
 
-/server/              # Backend proxy
-  └─ src/app.ts       # Express server
+server/src/
+├── app.ts                    # Express routes
+├── validateToken.ts          # CDP token validation
+└── verifyWebhookSignature.ts # Webhook HMAC verification
+
+constants/
+├── PaperTheme.ts    # Design system (colors, typography, spacing)
+├── BASE_URL.ts      # Backend URL from env
+└── TestAccounts.ts  # TestFlight mock data
 ```
 
-## Architecture Diagram
-<img width="3041" height="5992" alt="Onramp Mobile Demo Architecture" src="https://github.com/user-attachments/assets/10a726f1-c031-481c-a3cb-f334c6f80cc2" />
+## Design System
 
+The app uses a warm editorial theme ("Paper"):
 
-## Key Concepts
+| Token | Value | Usage |
+|-------|-------|-------|
+| `background` | `#F5F2EC` | Screen backgrounds |
+| `surface` | `#FFFFFF` | Cards, inputs |
+| `navy` | `#1A1A2E` | Primary text |
+| `orange` | `#FF6B35` | CTAs, selected states |
+| `sand` | `#8B7355` | Secondary text, labels |
+| `success` | `#2D7A4F` | Incoming amounts |
+| `border` | `#E2DDD4` | Dividers, input borders |
 
-### Smart Account vs EOA
+Tab bar uses `expo-blur` for frosted glass effect. All buttons use `react-native-reanimated` spring animations with `expo-haptics` feedback.
 
-The app creates two wallet types:
-- **EOA**: Standard wallet (externally owned account)
-- **Smart Account**: ERC-4337 account abstraction
+## Webhooks
 
-**Important**: The app displays **Smart Account balances** only. All EVM onramp funds automatically go to the Smart Account.
+| Endpoint | Source | Purpose |
+|----------|--------|---------|
+| `/webhooks/onramp` | Coinbase Onramp | Push notification on Apple Pay completion |
+| `/webhooks/onchain` | CDP Onchain Data | Push notification on USDC transfers |
 
-### Security Model
-#### Backend Proxy Pattern
+Both verify signatures via `X-Hook0-Signature` HMAC-SHA256.
 
-For security, API keys are **never exposed** to the client. Backend signs short‑lived ES256 JWTs with CDP API keys; only the backend ever sees API secrets.
-
-```
-Client App → Backend Proxy → Coinbase API
-              (has API keys)
-```
-
-This prevents API key theft if someone inspects your app.
-
-#### User authentication
-
-Mobile client obtains a user access token from the CDP RN SDK and sends it to the backend; backend validates with the CDP End User API before calling Onramp or wallet APIs. 
-
-
-#### Webhook security 
-
-Onramp webhooks are HMAC‑signed; backend verifies signatures before processing events and sending push notifications. 
-
-#### Key & data handling 
-
-Wallet keys are managed via the CDP SDK and stored in secure device storage; transport is TLS‑only. 
-
-
-### Gasless Transfers
-
-On Base network, transfers of USDC, EURC, or BTC are **gasless** (no ETH needed for gas) thanks to Coinbase Paymaster.
-
-## Troubleshooting
-
-### "Wallet not creating"
-- Verify `EXPO_PUBLIC_CDP_PROJECT_ID` is correct
-- Check CDP Portal for project status
-
-### "Push notifications not working"
-- **iOS Simulator**: Push notifications do not work on iOS Simulator. Use a physical device.
-- Should work automatically in Expo Go on physical devices (uses Expo Push Service)
-- For webhooks, verify your backend has a public URL (localhost won't work)
-- Check `.env` has correct `EXPO_PUBLIC_BASE_URL`
-- Verify webhook subscription is created in CDP Portal
-- Restart Expo after updating `.env`
-
-### "Transaction failing"
-- Enable **Sandbox Mode** for testing
-- Verify phone verification is complete (for Apple Pay)
-- Check backend logs: `cd server && npm run dev`
-
-## Development Tips
-
-### Testing Without Real Money
-
-1. Enable **Sandbox Mode** in Profile tab
-2. All transactions will be simulated
-3. No real blockchain interaction
-
-### Viewing Backend Logs
+## Evals
 
 ```bash
-cd server
-npm run dev
-# Watch console for API requests/responses
+# Code quality + branding + security
+bash evals/smoke-test.sh
+
+# Flow logic + contacts + webhooks
+bash evals/flow-check.sh
 ```
 
-### Debugging Push Notifications
+## Before the Demo
 
-Check Expo logs:
-```bash
-# In Expo terminal (Terminal 2)
-# Look for lines with [PUSH] prefix
-```
-
-### Resetting App State
-
-1. Sign out from Profile tab
-2. Force close app
-3. Relaunch
-
-## Environment Variables
-
-### Required (Root `.env`)
-
-| Variable | Description |
-|----------|-------------|
-| `EXPO_PUBLIC_CDP_PROJECT_ID` | Your CDP project ID |
-| `EXPO_PUBLIC_BASE_URL` | Backend server URL (public URL for webhooks, or `http://localhost:3000` for local testing) |
-| `EXPO_PUBLIC_USE_EXPO_CRYPTO` | `true` for Expo Go (`npx expo start`), `false` for dev builds (`npx expo run:ios`) |
-
-### Required (Server `.env`)
-
-| Variable | Description |
-|----------|-------------|
-| `CDP_API_KEY_ID` | CDP API key ID |
-| `CDP_API_KEY_SECRET` | CDP API private key |
-
-### Optional (Server `.env`)
-
-| Variable | Description |
-|----------|-------------|
-| `WEBHOOK_SECRET` | Webhook signing secret from CDP Portal (required for push notifications) |
-| `APNS_KEY_ID` | Apple Push Notification service key ID (for production iOS notifications) |
-| `APNS_TEAM_ID` | Apple Developer Team ID |
-| `APNS_KEY` | APNs private key (.p8 file content) |
-| `DATABASE_URL` | Database URL for production deployment (supports Redis, MongoDB, etc. - uses in-memory storage if not set) |
-
-## Documentation
-
-- [CDP Documentation](https://docs.cdp.coinbase.com/)
-- [Onramp API](https://docs.cdp.coinbase.com/onramp-&-offramp/introduction/quickstart)
-- [CDP React Native SDK](https://docs.cdp.coinbase.com/embedded-wallets/react-native/quickstart)
-- [Expo Documentation](https://docs.expo.dev/)
+1. Replace placeholder contact addresses in `utils/contacts.ts` with real Base wallet addresses
+2. Ensure `EXPO_PUBLIC_USE_EXPO_CRYPTO=false` in `.env`
+3. Run `npx expo prebuild --clean && npx expo run:ios --device`
+4. Test full flow: fund → send → check activity
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache License 2.0 — see [LICENSE](LICENSE).

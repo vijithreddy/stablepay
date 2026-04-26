@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     color: Paper.colors.navy,
     textAlign: 'center',
     letterSpacing: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
   continueButton: {
     backgroundColor: Paper.colors.orange,

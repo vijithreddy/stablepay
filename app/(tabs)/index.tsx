@@ -80,7 +80,8 @@
 import { useCurrentUser, useEvmAddress, useIsSignedIn, useSignOut, useSendUserOperation } from "@coinbase/cdp-hooks";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import * as Notifications from 'expo-notifications';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import AnimatedPressable from '../../components/ui/AnimatedPressable';
@@ -99,6 +100,7 @@ import { addActivity } from '../../utils/activity';
 import ContactPicker from '../../components/ui/ContactPicker';
 import AddContactSheet from '../../components/ui/AddContactSheet';
 import ConfirmSendSheet from '../../components/ui/ConfirmSendSheet';
+import FundSheet from '../../components/ui/FundSheet';
 
 
 
@@ -348,6 +350,8 @@ export default function Index() {
   const [sendAmount, setSendAmount] = useState('');
   const [showAddContact, setShowAddContact] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [showFundSheet, setShowFundSheet] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   // Fetch USDC balance on Base
@@ -401,11 +405,52 @@ export default function Index() {
   }, [effectiveIsSignedIn, connectedAddress, fetchBalance]);
 
   useFocusEffect(useCallback(() => {
-    if (effectiveIsSignedIn && getCurrentWalletAddress()) fetchBalance();
+    if (effectiveIsSignedIn && getCurrentWalletAddress()) {
+      fetchBalance();
+      console.log('[Balance] Tab focus refresh');
+    }
   }, [effectiveIsSignedIn, fetchBalance]));
+
+  // Refresh balance when app comes to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && effectiveIsSignedIn && getCurrentWalletAddress()) {
+        fetchBalance();
+        console.log('[Balance] Foreground refresh');
+      }
+    });
+    return () => sub.remove();
+  }, [effectiveIsSignedIn, fetchBalance]);
+
+  // Refresh balance on incoming push notification (onchain webhook)
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as any;
+      if (data?.type === 'balance_update') {
+        fetchBalance();
+        console.log('[Balance] Webhook push triggered refresh:', {
+          direction: data.direction,
+          amount: data.amount,
+        });
+        if (data.direction === 'incoming') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [fetchBalance]);
 
   const hasBalance = usdcBalance !== null && usdcBalance > 0;
   const balanceDisplay = usdcBalance !== null ? `$${usdcBalance.toFixed(2)}` : '$0.00';
+
+  // State logging
+  useEffect(() => {
+    console.log('[StablePay] Balance state:', {
+      balance: usdcBalance,
+      hasBalance,
+      state: loadingBalance ? 'STATE_C_loading' : hasBalance ? 'STATE_B_send' : 'STATE_A_fund',
+    });
+  }, [usdcBalance, loadingBalance, hasBalance]);
 
   // Refetch options is handled on screen focus and within OnrampForm when needed
 
@@ -769,7 +814,20 @@ export default function Index() {
     console.log('[StablePay] Bypassing quotes API — USDC/Base hardcoded, no quote needed');
 
     // Check cached phone verification
-    const phoneRecord = await getPhoneRecord();
+    let phoneRecord = await getPhoneRecord();
+
+    // If no cache but CDP has a phone linked, auto-cache it
+    if (!phoneRecord) {
+      const cdpPhone = currentUser?.authenticationMethods?.sms?.phoneNumber;
+      if (cdpPhone) {
+        console.log('[StablePay] CDP phone found, auto-caching:', cdpPhone);
+        const { storeVerifiedPhone } = await import('../../utils/phoneVerification');
+        await storeVerifiedPhone(cdpPhone);
+        const { setVerifiedPhone } = await import('../../utils/sharedState');
+        await setVerifiedPhone(cdpPhone);
+        phoneRecord = await getPhoneRecord();
+      }
+    }
 
     if (!phoneRecord) {
       // No verified phone — show sheet first
@@ -812,6 +870,7 @@ export default function Index() {
   const USDC_DECIMALS = 6;
 
   const handleSendUsdc = useCallback(async () => {
+    if (isSending) return; // prevent double tap
     if (!selectedContact || !sendAmount) return;
 
     const amountNum = parseFloat(sendAmount);
@@ -826,6 +885,8 @@ export default function Index() {
       setSendError('Wallet not ready — please wait');
       return;
     }
+
+    setIsSending(true);
 
     // Record as pending in activity
     const activityItem = await addActivity({
@@ -870,7 +931,7 @@ export default function Index() {
       await updateActivityStatus(
         activityItem.id,
         'confirmed',
-        result.transactionHash || result.userOperationHash
+        result.userOperationHash
       );
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -880,8 +941,10 @@ export default function Index() {
       setSendAmount('');
       setSendError(null);
 
-      // Refresh balance
+      // Refresh balance (immediate + delayed retries for blockchain confirmation)
       fetchBalance();
+      setTimeout(() => fetchBalance(), 3000);
+      setTimeout(() => fetchBalance(), 8000);
 
     } catch (error: any) {
       console.error('[StablePay] Send failed:', error);
@@ -889,12 +952,14 @@ export default function Index() {
       await updateActivityStatus(activityItem.id, 'failed');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error; // Let ConfirmSendSheet display the error
+    } finally {
+      setIsSending(false);
     }
-  }, [selectedContact, sendAmount, currentUser, sendUserOperation, fetchBalance]);
+  }, [selectedContact, sendAmount, currentUser, sendUserOperation, fetchBalance, isSending]);
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]} keyboardShouldPersistTaps="handled" bounces contentInsetAdjustmentBehavior="automatic">
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]} keyboardShouldPersistTaps="handled" bounces showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic">
         {/* Header */}
         <View style={styles.headerRow}>
           <Wordmark />
@@ -940,32 +1005,26 @@ export default function Index() {
 
         {!hasBalance ? (
           /* STATE A — Zero balance */
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>ADD FUNDS</Text>
-            <Animated.View entering={FadeInDown.delay(200).springify().damping(18).stiffness(200)} style={styles.pillRow}>
-              {quickAmounts.map((amt) => (
-                <Pressable
-                  key={amt}
-                  style={[styles.pill, selectedQuickAmount === amt && styles.pillSelected]}
-                  onPress={() => { Haptics.selectionAsync(); setSelectedQuickAmount(amt); setAmount(amt); }}
-                >
-                  <Text style={[styles.pillText, selectedQuickAmount === amt && styles.pillTextSelected]}>
-                    ${amt}
-                  </Text>
-                </Pressable>
-              ))}
-            </Animated.View>
+          <Animated.View entering={FadeInDown.delay(200).springify().damping(18).stiffness(200)} style={{ paddingHorizontal: 16 }}>
+            <Text style={{ fontSize: 14, color: Paper.colors.sand, textAlign: 'center', marginBottom: 32 }}>
+              Your wallet is empty
+            </Text>
             <AnimatedPressable
-              style={styles.ctaButton}
-              onPress={() => handleFundTap(selectedQuickAmount)}
-              disabled={isProcessingPayment || loadingBalance || !walletReady}
+              style={[styles.ctaButton, { borderRadius: 16 }]}
+              onPress={() => setShowFundSheet(true)}
+              disabled={!walletReady || isProcessingPayment}
               haptic="medium"
             >
               <Text style={styles.ctaText}>
-                {!walletReady ? 'Creating wallet...' : isProcessingPayment ? 'Processing...' : 'Add with Apple Pay'}
+                {!walletReady ? 'Creating wallet...' : isProcessingPayment ? 'Processing...' : 'Add USDC via Apple Pay'}
               </Text>
+              {walletReady && (
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 3 }}>
+                  Instant · Gasless · Secure
+                </Text>
+              )}
             </AnimatedPressable>
-          </View>
+          </Animated.View>
         ) : (
           /* STATE B — Has balance */
           <>
@@ -1001,11 +1060,11 @@ export default function Index() {
             <AnimatedPressable
               style={[styles.ctaButton, styles.ctaMargin]}
               onPress={() => setShowConfirm(true)}
-              disabled={!selectedContact || !sendAmount || parseFloat(sendAmount) <= 0}
+              disabled={!selectedContact || !sendAmount || parseFloat(sendAmount) <= 0 || isSending || (usdcBalance !== null && parseFloat(sendAmount) > usdcBalance)}
               haptic="medium"
             >
               <Text style={styles.ctaText}>
-                {selectedContact ? `Send to ${selectedContact.name}` : 'Select a contact'}
+                {isSending ? 'Sending...' : selectedContact ? `Send to ${selectedContact.name}` : 'Select a contact'}
               </Text>
             </AnimatedPressable>
 
@@ -1015,14 +1074,16 @@ export default function Index() {
               <Text style={styles.errorText}>Insufficient balance</Text>
             )}
 
-            <AnimatedPressable
-              style={styles.secondaryButton}
-              onPress={() => handleFundTap('25')}
+            <Pressable
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 20, paddingVertical: 12, opacity: isProcessingPayment ? 0.4 : 1 }}
+              onPress={() => setShowFundSheet(true)}
               disabled={isProcessingPayment}
-              haptic="light"
             >
-              <Text style={styles.secondaryText}>+ Fund wallet with Apple Pay</Text>
-            </AnimatedPressable>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: Paper.colors.orangeLight, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: Paper.colors.orange, fontSize: 14, fontWeight: '700' }}>+</Text>
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: Paper.colors.sand }}>Add more USDC</Text>
+            </Pressable>
           </>
         )}
       </ScrollView>
@@ -1062,6 +1123,30 @@ export default function Index() {
               enhancedMessage = message + txDetails;
             }
             setApplePayAlert({ visible: true, title, message: enhancedMessage, type });
+
+            // Record funding event on first success only (commit_success)
+            // polling_success also fires 'success' — skip to avoid duplicates
+            if (type === 'success' && currentTransaction && title.includes('Payment')) {
+              addActivity({
+                type: 'fund',
+                amountUsd: currentTransaction.amount,
+                amountUsdc: currentTransaction.amount,
+                status: 'pending',
+                paymentMethod: 'Apple Pay',
+              }).then(() => {
+                console.log('[StablePay] Funding pending in activity');
+              });
+            }
+
+            // Update to confirmed when delivery completes (polling_success)
+            if (type === 'success' && title.includes('Complete')) {
+              // Immediate fetch + delayed retry (blockchain may still be confirming)
+              fetchBalance();
+              setTimeout(() => fetchBalance(), 3000);
+              setTimeout(() => fetchBalance(), 8000);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              console.log('[StablePay] Balance refreshed after funding (+ 3s/8s retry)');
+            }
           }}
         />
       )}
@@ -1137,6 +1222,16 @@ export default function Index() {
         amountUsd={sendAmount}
         onConfirm={handleSendUsdc}
         onDismiss={() => setShowConfirm(false)}
+      />
+
+      <FundSheet
+        visible={showFundSheet}
+        onDismiss={() => setShowFundSheet(false)}
+        onFund={(amt) => {
+          setShowFundSheet(false);
+          handleFundTap(amt);
+        }}
+        title={hasBalance ? 'Add more USDC' : 'Add USDC'}
       />
     </View>
   );

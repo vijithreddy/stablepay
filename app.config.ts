@@ -24,7 +24,7 @@ const config: ExpoConfig = {
       'expo-router',
       'expo-secure-store',
       'expo-localization',
-      ['expo-splash-screen', { image: './assets/images/stablepay-splash.png', imageWidth: 200, resizeMode: 'contain', backgroundColor: '#ffffff' }],
+      ['expo-splash-screen', { image: './assets/images/stablepay-splash.png', imageWidth: 200, resizeMode: 'contain', backgroundColor: '#F5F2EC' }],
       ['expo-build-properties', { ios: { deploymentTarget: '15.1' } }],
       ['expo-notifications', {
         icon: './assets/images/icon.png',

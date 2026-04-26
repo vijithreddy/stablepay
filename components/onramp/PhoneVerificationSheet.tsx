@@ -139,13 +139,16 @@ export default function PhoneVerificationSheet({ visible, onVerified, onDismiss 
       setState('otp');
       setResendCountdown(30);
     } catch (err: any) {
-      console.error('[StablePay] CDP linkSms error:', err);
-      // Handle already linked — still need to verify
-      if (err.code === 'METHOD_ALREADY_LINKED') {
-        setError('Phone already linked. Please verify from your profile.');
-      } else {
-        setError(err.message || 'Failed to send code');
+      console.log('[StablePay] CDP linkSms error:', err?.message || err);
+      // Phone already linked to CDP — treat as verified
+      if (err.message?.includes('already linked') || err.code === 'METHOD_ALREADY_LINKED') {
+        console.log('[StablePay] Phone already linked — auto-verifying');
+        await storeVerifiedPhone(phoneNumber);
+        await setSharedVerifiedPhone(phoneNumber);
+        setState('success');
+        return;
       }
+      setError(err.message || 'Failed to send code');
     } finally {
       setLoading(false);
     }

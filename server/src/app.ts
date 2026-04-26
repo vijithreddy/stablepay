@@ -52,6 +52,10 @@ if (process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID && process.env.APNS_KEY)
   console.log('ℹ️ Using Expo push service for notifications (dev)');
 }
 
+if (!process.env.ONCHAIN_WEBHOOK_SECRET) {
+  console.warn('⚠️ ONCHAIN_WEBHOOK_SECRET not set — onchain webhook verification will fail');
+}
+
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
@@ -106,6 +110,7 @@ app.use(cors({
 // For webhook signature verification, we need raw body
 // Use express.raw() for webhook routes before JSON parsing
 app.use('/webhooks/onramp', express.raw({ type: 'application/json' }));
+app.use('/webhooks/onchain', express.raw({ type: 'application/json' }));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -120,7 +125,15 @@ app.use((req, _res, next) => {
 
 // Health check (no auth required)
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, message: 'Server is running' });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    webhooks: {
+      onramp: !!process.env.WEBHOOK_SECRET,
+      onchain: !!process.env.ONCHAIN_WEBHOOK_SECRET,
+      subscriptionId: process.env.CDP_ONCHAIN_SUBSCRIPTION_ID ? 'configured' : 'missing',
+    },
+  });
 });
 
 // 🔒 GLOBAL AUTHENTICATION MIDDLEWARE
@@ -525,14 +538,12 @@ app.post('/push-tokens', async (req, res) => {
     }
 
     // Security: Verify the authenticated user matches the userId they're trying to register
-    // Allow both exact match AND sandbox-prefixed version (for webhook matching)
-    const isValidUser = req.userId === userId || `sandbox-${req.userId}` === userId;
+    // Allow exact match or stablepay- prefixed version (for webhook matching)
+    const isValidUser = req.userId === userId || `stablepay-${req.userId}` === userId;
     if (!isValidUser) {
       console.error('❌ [PUSH] Unauthorized token registration attempt:', {
         tokenUserId: req.userId,
         requestUserId: userId,
-        match: req.userId === userId,
-        sandboxMatch: `sandbox-${req.userId}` === userId
       });
       return res.status(403).json({ error: 'Forbidden: Cannot register push token for another user' });
     }
@@ -545,17 +556,28 @@ app.post('/push-tokens', async (req, res) => {
     };
 
     // Store in database (production) or in-memory (local dev)
-    // Store for BOTH regular userId AND sandbox-prefixed userId
-    // This ensures webhooks with "sandbox-{userId}" can find the token
+    // Store for BOTH regular userId AND stablepay- prefixed userId
+    // This ensures webhooks with "stablepay-{userId}" can find the token
     if (useDatabase && database) {
       await database.set(`pushtoken:${userId}`, JSON.stringify(tokenData));
-      await database.set(`pushtoken:sandbox-${userId}`, JSON.stringify(tokenData));
-      console.log('✅ [PUSH] Token stored in database for user:', userId, 'and sandbox-' + userId);
+      await database.set(`pushtoken:stablepay-${userId}`, JSON.stringify(tokenData));
+      console.log('✅ [PUSH] Token stored in database for user:', userId);
     } else {
       pushTokenStore.set(userId, tokenData);
-      pushTokenStore.set(`sandbox-${userId}`, tokenData);
-      console.log('✅ [PUSH] Token stored in memory for user:', userId, 'and sandbox-' + userId);
-      console.log('📊 [PUSH] Total tokens in store:', pushTokenStore.size);
+      pushTokenStore.set(`stablepay-${userId}`, tokenData);
+      console.log('✅ [PUSH] Token stored in memory for user:', userId);
+    }
+
+    // Also index by wallet address for onchain webhook lookups
+    if (req.body.walletAddress) {
+      const addr = req.body.walletAddress.toLowerCase();
+      const addrKey = `push_token_by_address:${addr}`;
+      if (useDatabase && database) {
+        await database.set(addrKey, JSON.stringify(tokenData));
+      } else {
+        pushTokenStore.set(addrKey, tokenData);
+      }
+      console.log('[PUSH] Token indexed by address:', addr.slice(0, 10) + '...');
     }
 
     console.log('✅ [PUSH] Token registered successfully:', {
@@ -597,6 +619,133 @@ app.get('/push-tokens/debug/:userId', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to check token' });
+  }
+});
+
+// Helper: look up push token by wallet address
+async function getPushTokenForAddress(address: string): Promise<{ token: string; platform: string; tokenType?: string } | null> {
+  try {
+    const key = 'push_token_by_address:' + address.toLowerCase();
+    if (useDatabase && database) {
+      const result = await database.get(key);
+      return result ? JSON.parse(result) : null;
+    } else {
+      return pushTokenStore.get(key) || null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+// Helper: send push notification (APNs or Expo)
+async function sendPushNotification(
+  tokenData: { token: string; platform: string; tokenType?: string },
+  title: string,
+  body: string,
+  data: Record<string, any>
+): Promise<void> {
+  const isNativeToken = tokenData.tokenType === 'native' || !tokenData.tokenType;
+
+  if (isNativeToken && useAPNs && apnProvider && tokenData.platform === 'ios') {
+    const apn = await import('@parse/node-apn');
+    const notification = new apn.Notification({
+      alert: { title, body },
+      topic: 'com.vijithreddy.stablepay',
+      sound: 'default',
+      payload: data,
+    });
+    await apnProvider.send(notification, tokenData.token);
+  } else {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: tokenData.token, sound: 'default', title, body, data }),
+    });
+  }
+}
+
+/**
+ * Onchain Activity Webhook
+ * POST /webhooks/onchain
+ *
+ * Receives onchain transfer events (USDC on Base).
+ * Sends push notifications to sender and recipient.
+ * Requires ONCHAIN_WEBHOOK_SECRET env var.
+ */
+app.post('/webhooks/onchain', webhookRateLimiter, async (req, res) => {
+  try {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
+    const signature = req.headers['x-hook0-signature'] as string;
+
+    if (!signature) {
+      console.error('[Onchain] Missing signature');
+      return res.status(400).json({ error: 'Missing signature' });
+    }
+
+    if (!process.env.ONCHAIN_WEBHOOK_SECRET) {
+      console.warn('[Onchain] ONCHAIN_WEBHOOK_SECRET not configured');
+      return res.status(500).json({ error: 'Server config error' });
+    }
+
+    const isValid = verifyWebhookSignature(signature, req.headers, rawBody, process.env.ONCHAIN_WEBHOOK_SECRET);
+    if (!isValid) {
+      console.error('[Onchain] Invalid signature');
+      return res.status(400).json({ error: 'Invalid signature' });
+    }
+
+    const event = Buffer.isBuffer(req.body) ? JSON.parse(rawBody) : req.body;
+
+    console.log('[Onchain] Raw event keys:', Object.keys(event));
+    console.log('[Onchain] Full raw event:', JSON.stringify(event, null, 2));
+
+    // CDP may use different field names — try multiple paths
+    const eventType = event.type || event.eventType || event.event;
+    const eventData = event.data || event;
+
+    console.log('[Onchain] Parsed:', {
+      type: eventType,
+      txHash: eventData?.transactionHash || eventData?.tx_hash,
+      from: (eventData?.from || eventData?.sender)?.slice(0, 10),
+      to: (eventData?.to || eventData?.recipient)?.slice(0, 10),
+      value: eventData?.value || eventData?.amount,
+    });
+
+    if (eventType === 'onchain.activity.detected' || eventType === 'erc20_transfer') {
+      const to = eventData?.to || eventData?.recipient;
+      const from = eventData?.from || eventData?.sender;
+      const value = eventData?.value || eventData?.amount;
+      const transactionHash = eventData?.transactionHash || eventData?.tx_hash;
+      const amountUsdc = (parseInt(value) / 1_000_000).toFixed(2);
+
+      // Notify recipient
+      const recipientToken = await getPushTokenForAddress(to);
+      if (recipientToken) {
+        await sendPushNotification(
+          recipientToken,
+          'USDC received',
+          `+$${amountUsdc} USDC arrived in your wallet`,
+          { type: 'balance_update', direction: 'incoming', amount: amountUsdc, txHash: transactionHash }
+        );
+        console.log('[Onchain] Push sent to recipient:', to.slice(0, 10));
+      }
+
+      // Notify sender
+      const senderToken = await getPushTokenForAddress(from);
+      if (senderToken) {
+        await sendPushNotification(
+          senderToken,
+          'USDC sent',
+          `-$${amountUsdc} USDC sent`,
+          { type: 'balance_update', direction: 'outgoing', amount: amountUsdc, txHash: transactionHash }
+        );
+        console.log('[Onchain] Push sent to sender:', from.slice(0, 10));
+      }
+    }
+
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('[Onchain] Error:', error);
+    return res.status(200).json({ received: true, error: 'Processing error' });
   }
 });
 
@@ -709,8 +858,8 @@ app.post('/webhooks/onramp', webhookRateLimiter, async (req, res) => {
           }
 
           // Prepare notification content
-          const title = '🎉 Crypto Purchase Complete!';
-          const body = `Your ${amount} ${currency} has been delivered to your ${network} wallet!`;
+          const title = '🎉 USDC Added!';
+          const body = `$${amount} USDC has been added to your wallet.`;
           const notificationData = {
             transactionId: txId,
             type: 'onramp_complete',
@@ -744,7 +893,7 @@ app.post('/webhooks/onramp', webhookRateLimiter, async (req, res) => {
                 const apn = await import('@parse/node-apn');
                 const notification = new apn.Notification({
                   alert: { title, body },
-                  topic: 'com.coinbase.cdp-onramp', // Your bundle ID
+                  topic: 'com.vijithreddy.stablepay', // Your bundle ID
                   sound: 'default',
                   payload: notificationData
                 });
@@ -859,8 +1008,8 @@ app.post('/webhooks/onramp', webhookRateLimiter, async (req, res) => {
           }
 
           // Prepare notification content
-          const failTitle = '❌ Transaction Failed';
-          const failBody = `Your purchase failed: ${failureReason}. Please try again.`;
+          const failTitle = '❌ Payment Failed';
+          const failBody = `Your USDC purchase failed: ${failureReason}. Please try again.`;
           const failData = {
             transactionId: txId,
             type: 'onramp_failed',
@@ -886,7 +1035,7 @@ app.post('/webhooks/onramp', webhookRateLimiter, async (req, res) => {
                 const apn = await import('@parse/node-apn');
                 const notification = new apn.Notification({
                   alert: { title: failTitle, body: failBody },
-                  topic: 'com.coinbase.cdp-onramp', // Your bundle ID
+                  topic: 'com.vijithreddy.stablepay', // Your bundle ID
                   sound: 'default',
                   payload: failData
                 });

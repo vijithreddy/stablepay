@@ -60,9 +60,8 @@
  * before sending to Coinbase API (needs lowercase network names, uppercase symbols).
  *
  * @see components/onramp/OnrampForm.tsx for form UI and validation
- * @see utils/createGuestCheckoutOrder.ts for guest checkout (Apple Pay / Google Pay) API integration
+ * @see utils/createGuestCheckoutOrder.ts for Apple Pay API integration
  * @see utils/createOnrampSession.ts for session API
- * @see utils/fetchBuyQuote.ts for quote generation logic
  */
 
 import { createOnrampSession } from "@/utils/createOnrampSession";
@@ -129,7 +128,7 @@ export function useOnramp() {
       const isTestSession = isTestSessionActive();
 
       const paymentMethodValue = formData.paymentMethod || 'GUEST_CHECKOUT_APPLE_PAY';
-      const paymentLabel = paymentMethodValue === 'GUEST_CHECKOUT_GOOGLE_PAY' ? 'Google Pay' : 'Apple Pay';
+      const paymentLabel = 'Apple Pay';
 
       const userId = currentUser?.userId || 'unknown-user';
       const partnerUserRef = `stablepay-${userId}`;
@@ -155,7 +154,7 @@ export function useOnramp() {
         // Don't block transaction if push token fails
       }
 
-      // Guest Checkout (Apple Pay / Google Pay) requires BOTH email and phone
+      // Apple Pay requires BOTH email and phone
       // For test sessions, use test account credentials
       const userEmail = isTestSession
         ? TEST_ACCOUNTS.email

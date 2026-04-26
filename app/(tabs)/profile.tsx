@@ -592,7 +592,7 @@ export default function WalletScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} bounces showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic">
         <Text style={styles.heading}>Profile</Text>
 
         {/* Avatar */}
@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   walletAddress: {
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
     fontSize: 14,
     fontWeight: '600',
     color: Paper.colors.navy,

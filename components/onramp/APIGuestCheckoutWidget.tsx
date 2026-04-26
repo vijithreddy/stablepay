@@ -150,6 +150,7 @@ export function APIGuestCheckoutWidget({
                 timeoutRef.current = null;
               }
               setTransactionStatus?.('pending');
+              setIsProcessingPayment?.(false);
               onAlert?.(
                 `Payment Successful!`,
                 "Your payment has been processed. We're now delivering your USDC to your wallet.",
@@ -173,6 +174,7 @@ export function APIGuestCheckoutWidget({
                 timeoutRef.current = null;
               }
               setTransactionStatus?.('success');
+              setIsProcessingPayment?.(false);
               onAlert?.(`Complete!`, "Your USDC has been delivered to your wallet!", 'success');
               setTimeout(() => onClose?.(), 2000);
               break;
@@ -183,6 +185,7 @@ export function APIGuestCheckoutWidget({
                 timeoutRef.current = null;
               }
               setTransactionStatus?.('error');
+              setIsProcessingPayment?.(false);
               onAlert?.(
                 `Transaction Failed`,
                 `There was an issue: ${data.data?.errorCode} - ${data.data?.errorMessage}`,
