@@ -20,9 +20,7 @@ import { fetchOfframpTransaction, OfframpTransaction } from '@/utils/fetchOffram
 import { getPendingOfframpBalance, isTestSessionActive } from '@/utils/sharedState';
 import {
   useCurrentUser,
-  useSendSolanaTransaction,
   useSendUserOperation,
-  useSolanaAddress,
 } from '@coinbase/cdp-hooks';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -44,7 +42,6 @@ const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BLUE, WHITE, BORDER } = 
 function getKnownDecimals(asset: string): number {
   switch (asset.toUpperCase()) {
     case 'ETH': return 18;
-    case 'SOL': return 9;
     case 'USDC':
     case 'EURC': return 6;
     case 'BTC':
@@ -70,8 +67,6 @@ export default function OfframpSendScreen() {
   const [alertHideButton, setAlertHideButton] = useState(false);
 
   const { sendUserOperation, status: userOpStatus, data: userOpData, error: userOpError } = useSendUserOperation();
-  const { sendSolanaTransaction } = useSendSolanaTransaction();
-  const { solanaAddress } = useSolanaAddress();
   const { currentUser } = useCurrentUser();
 
   const smartAccountAddress = currentUser?.evmSmartAccounts?.[0] ?? null;
@@ -176,12 +171,7 @@ export default function OfframpSendScreen() {
         return;
       }
 
-      const isSolana = transaction.network === 'solana';
-      if (isSolana) {
-        await handleSolanaOfframpSend();
-      } else {
-        await handleEvmOfframpSend();
-      }
+      await handleEvmOfframpSend();
     } catch (err) {
       showAlert('Send Failed ❌', err instanceof Error ? err.message : 'Unknown error occurred.', 'error', false);
     } finally {
@@ -238,70 +228,7 @@ export default function OfframpSendScreen() {
     }
   };
 
-  const handleSolanaOfframpSend = async () => {
-    if (!transaction || !solanaAddress) {
-      showAlert('Error', 'Solana wallet not found.', 'error', false);
-      return;
-    }
-
-    const { to_address, sell_amount, asset } = transaction;
-    const sellAmountValue = sell_amount.value;
-    const mintAddress = storedBalance?.token?.mintAddress;
-    const storedDecimals = storedBalance?.amount?.decimals ? parseInt(storedBalance.amount.decimals) : null;
-    const decimals = storedDecimals ?? getKnownDecimals(asset);
-    const amountRaw = Math.floor(parseFloat(sellAmountValue) * Math.pow(10, decimals));
-    const isSPL = !!mintAddress && asset.toUpperCase() !== 'SOL';
-
-    showAlert('Sending ⏳', 'Building and submitting Solana transaction...\n\nDo not close this screen.', 'info', true);
-
-    console.log('💸 [OFFRAMP SEND] Solana transfer:', { to_address, sell_amount: sellAmountValue, asset, isSPL, mintAddress });
-
-    const { Connection, clusterApiUrl, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js');
-    const connection = new Connection(clusterApiUrl('mainnet-beta'));
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
-
-    let tx: InstanceType<typeof Transaction>;
-
-    if (isSPL) {
-      const { createTransferInstruction, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getAccount } = await import('@solana/spl-token');
-      const mint = new PublicKey(mintAddress);
-      const from = new PublicKey(solanaAddress);
-      const to = new PublicKey(to_address);
-      const fromAta = await getAssociatedTokenAddress(mint, from);
-      const toAta = await getAssociatedTokenAddress(mint, to);
-
-      tx = new Transaction({ recentBlockhash: blockhash, feePayer: from });
-      try {
-        await getAccount(connection, toAta);
-      } catch {
-        tx.add(createAssociatedTokenAccountInstruction(from, toAta, to, mint));
-      }
-      tx.add(createTransferInstruction(fromAta, toAta, from, amountRaw));
-    } else {
-      tx = new Transaction({ recentBlockhash: blockhash, feePayer: new PublicKey(solanaAddress) }).add(
-        SystemProgram.transfer({
-          fromPubkey: new PublicKey(solanaAddress),
-          toPubkey: new PublicKey(to_address),
-          lamports: amountRaw,
-        })
-      );
-    }
-
-    const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
-    const result = await sendSolanaTransaction({
-      solanaAccount: solanaAddress,
-      network: 'solana' as any,
-      transaction: serialized,
-    });
-
-    const explorerUrl = `https://solscan.io/tx/${result.transactionSignature}`;
-    showAlert(
-      'Sent! ✨',
-      `Successfully sent ${sellAmountValue} ${asset} to Coinbase.\n\nCoinbase will process your cash-out and deposit fiat to your account.\n\nView on Solscan:\n${explorerUrl}`,
-      'success',
-      false
-    );
-  };
+  // REMOVED: handleSolanaOfframpSend — Base/EVM only
 
   const truncateAddress = (addr: string) =>
     addr.length > 12 ? `${addr.slice(0, 6)}...${addr.slice(-6)}` : addr;

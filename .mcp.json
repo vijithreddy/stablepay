@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cdp-docs": {
+      "type": "url",
+      "url": "https://docs.cdp.coinbase.com/mcp"
+    }
+  }
+}

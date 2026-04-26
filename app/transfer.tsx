@@ -2,7 +2,7 @@
  * Transfer Page - Send tokens to any address
  *
  * Features:
- * - Network selection (Base, Ethereum, Solana)
+ * - Network selection (Base)
  * - Token selector
  * - Recipient address input with validation
  * - Amount input with quick % buttons (10%, 50%, 100%)
@@ -16,10 +16,8 @@
 import { CoinbaseAlert } from '@/components/ui/CoinbaseAlerts';
 import { COLORS } from '@/constants/Colors';
 import { isTestSessionActive } from '@/utils/sharedState';
-import { useCurrentUser, useSendSolanaTransaction, useSendUserOperation, useSolanaAddress } from '@coinbase/cdp-hooks';
+import { useCurrentUser, useSendUserOperation } from '@coinbase/cdp-hooks';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
-import { createTransferInstruction, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getAccount } from '@solana/spl-token';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -49,7 +47,7 @@ export default function TransferScreen() {
   const [recipientAddress, setRecipientAddress] = useState('');
   const [amount, setAmount] = useState('');
   const [selectedToken, setSelectedToken] = useState<any>(null);
-  const [network, setNetwork] = useState('base'); // base, ethereum, solana
+  const [network, setNetwork] = useState('base');
   const [sending, setSending] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -65,9 +63,7 @@ export default function TransferScreen() {
   // Confirmation modal state
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  const { sendSolanaTransaction } = useSendSolanaTransaction();
   const { sendUserOperation, status: userOpStatus, data: userOpData, error: userOpError } = useSendUserOperation();
-  const { solanaAddress } = useSolanaAddress();
   const { currentUser } = useCurrentUser();
 
   // Get smart account address (where balances are stored for both Base and Ethereum)
@@ -82,15 +78,10 @@ export default function TransferScreen() {
     (network === 'base' && ['USDC', 'EURC', 'BTC'].includes(tokenSymbol)) ||
     (network === 'base-sepolia');
 
-  // Check if this is a native token transfer (ETH on EVM, SOL on Solana)
-  // Native tokens don't have contract addresses and require gas fees
-  // Also check for sentinel addresses: 0x0000... or 0xeeee... (used by SDKs to represent native tokens)
+  // Check if this is a native token transfer (ETH on EVM)
   const contractAddress = selectedToken?.token?.contractAddress;
-  const mintAddress = selectedToken?.token?.mintAddress;
 
-  // For Solana: native SOL has no mintAddress, SPL tokens have mintAddress
-  // For EVM: native ETH has no/sentinel contractAddress, ERC-20s have real contractAddress
-  const isNativeToken = !mintAddress && (
+  const isNativeToken = (
     !contractAddress ||
     contractAddress === '0x0000000000000000000000000000000000000000' ||
     contractAddress.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
@@ -98,7 +89,6 @@ export default function TransferScreen() {
   const needsGasFee = isNativeToken && !isPaymasterSupported;
 
   console.log('🔍 [TRANSFER] Account addresses:', {
-    solanaAddress,
     smartAccountAddress,
   });
 
@@ -185,21 +175,10 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
       return false;
     }
 
-    // Check if network is Solana (includes both 'solana' and 'solana-devnet')
-    const isSolanaNetwork = network?.toLowerCase().includes('solana');
-
-    if (isSolanaNetwork) {
-      // Solana address validation (base58, 32-44 chars)
-      if (!address.match(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/)) {
-        setAddressError('Invalid Solana address format');
-        return false;
-      }
-    } else {
-      // EVM address validation (0x + 40 hex chars)
-      if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
-        setAddressError('Invalid EVM address format');
-        return false;
-      }
+    // EVM address validation (0x + 40 hex chars)
+    if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
+      setAddressError('Invalid EVM address format');
+      return false;
     }
 
     setAddressError(null);
@@ -278,14 +257,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
         return;
       }
 
-      // Check if network is Solana (includes both 'solana' and 'solana-devnet')
-      const isSolanaNetwork = network?.toLowerCase().includes('solana');
-
-      if (isSolanaNetwork) {
-        await handleSolanaTransfer();
-      } else {
-        await handleEvmTransfer();
-      }
+      await handleEvmTransfer();
     } catch (error) {
       console.error('Transfer error:', error);
       showAlert('Transfer Failed', error instanceof Error ? error.message : 'Unknown error occurred', 'error');
@@ -384,213 +356,7 @@ From: ${smartAccountAddress?.slice(0, 6)}...${smartAccountAddress?.slice(-4)}`;
     }
   };
 
-  const handleSolanaTransfer = async () => {
-    if (!solanaAddress || !selectedToken) return;
-
-    try {
-      const amountFloat = parseFloat(amount);
-      const decimals = parseInt(selectedToken.amount?.decimals || '9');
-      const amountRaw = Math.floor(amountFloat * Math.pow(10, decimals));
-
-      // Check if this is an SPL token (has mintAddress AND not native SOL) or native SOL
-      const tokenSymbol = selectedToken.token?.symbol?.toUpperCase() || 'SOL';
-      const isSPLToken = selectedToken.token?.mintAddress && tokenSymbol !== 'SOL';
-      const isDevnet = network?.toLowerCase().includes('devnet');
-
-      console.log('🔄 [SOLANA] Building transfer transaction:', {
-        from: solanaAddress,
-        to: recipientAddress,
-        amount: amountRaw,
-        isSPLToken,
-        isDevnet,
-        network,
-        mintAddress: selectedToken.token?.mintAddress
-      });
-
-      // Show pending alert
-      showAlert(
-        'Transaction Pending ⏳',
-        `Building and submitting Solana transaction...\n\nAmount: ${amount} ${tokenSymbol}\nTo: ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}\n\nPlease do NOT close this alert until transaction is complete. This may take a few seconds.`,
-        'info',
-        undefined,
-        true // Mark as pending alert (hide button)
-      );
-
-      // Create Solana connection - use network parameter to determine cluster
-      const { Connection, clusterApiUrl } = await import('@solana/web3.js');
-      const cluster = isDevnet ? 'devnet' : 'mainnet-beta';
-      const connection = new Connection(clusterApiUrl(cluster));
-
-      // Fetch recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash('confirmed');
-
-      let transaction: Transaction;
-
-      if (isSPLToken) {
-        // SPL Token Transfer (USDC, etc.)
-        console.log('📦 [SPL] Building SPL token transfer...');
-
-        const mintAddress = new PublicKey(selectedToken.token.mintAddress);
-        const fromPubkey = new PublicKey(solanaAddress);
-        const toPubkey = new PublicKey(recipientAddress);
-
-        // Get sender's token account (ATA)
-        const fromTokenAccount = await getAssociatedTokenAddress(
-          mintAddress,
-          fromPubkey
-        );
-
-        // Check if sender's token account exists
-        try {
-          await getAccount(connection, fromTokenAccount);
-          console.log('✅ [SPL] Sender ATA exists');
-        } catch (error) {
-          throw new Error(
-            `You don't have a token account for this asset yet.\n\n` +
-            `This means you haven't received any ${tokenSymbol} tokens to your wallet.\n\n` +
-            `Please receive some ${tokenSymbol} first before attempting to transfer.`
-          );
-        }
-
-        // Check if sender has enough SOL for transaction fees (minimum check)
-        const senderSolBalance = await connection.getBalance(fromPubkey);
-        const minFeeRequired = 0.00001 * 1e9; // ~0.00001 SOL in lamports for basic tx fee
-
-        if (senderSolBalance < minFeeRequired) {
-          throw new Error(
-            `Insufficient SOL for transaction fees.\n\n` +
-            `Current SOL balance: ${(senderSolBalance / 1e9).toFixed(9)} SOL\n` +
-            `Required: At least 0.00001 SOL for transaction fees\n\n` +
-            (isDevnet
-              ? `Get devnet SOL from: https://faucet.solana.com`
-              : `Add SOL to your wallet to cover transaction fees.`)
-          );
-        }
-
-        // Get recipient's token account (ATA)
-        const toTokenAccount = await getAssociatedTokenAddress(
-          mintAddress,
-          toPubkey
-        );
-
-        // Check if recipient's token account exists
-        let needsATACreation = false;
-        try {
-          await getAccount(connection, toTokenAccount);
-          console.log('✅ [SPL] Recipient ATA exists');
-        } catch (error) {
-          console.log('⚠️ [SPL] Recipient ATA does not exist, will create');
-          needsATACreation = true;
-
-          // Check if sender has enough SOL to create ATA
-          const senderBalance = await connection.getBalance(fromPubkey);
-          const minRequired = 0.003 * 1e9; // ~0.003 SOL in lamports
-
-          if (senderBalance < minRequired) {
-            throw new Error(
-              `Insufficient SOL to create recipient's token account.\n\n` +
-              `Current balance: ${(senderBalance / 1e9).toFixed(6)} SOL\n` +
-              `Required: ~0.003 SOL (for ATA creation + fees)\n\n` +
-              (isDevnet
-                ? `Get devnet SOL from: https://faucet.solana.com`
-                : `⚠️ You need SOL in your wallet to cover:\n• Associated Token Account creation rent (~0.00204 SOL)\n• Transaction fees (~0.00001 SOL)\n\nAdd SOL to your wallet to proceed with this transfer.`)
-            );
-          }
-        }
-
-        transaction = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: fromPubkey
-        });
-
-        // Add create ATA instruction if needed
-        if (needsATACreation) {
-          transaction.add(
-            createAssociatedTokenAccountInstruction(
-              fromPubkey, // payer
-              toTokenAccount, // ata
-              toPubkey, // owner
-              mintAddress // mint
-            )
-          );
-          console.log('📝 [SPL] Added create ATA instruction');
-        }
-
-        // Add transfer instruction
-        transaction.add(
-          createTransferInstruction(
-            fromTokenAccount, // source
-            toTokenAccount, // destination
-            fromPubkey, // owner
-            amountRaw // amount
-          )
-        );
-
-        console.log('✅ [SPL] Transaction built with', transaction.instructions.length, 'instructions');
-      } else {
-        // Native SOL transfer
-        console.log('💎 [SOL] Building native SOL transfer...');
-
-        transaction = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: new PublicKey(solanaAddress)
-        }).add(
-          SystemProgram.transfer({
-            fromPubkey: new PublicKey(solanaAddress),
-            toPubkey: new PublicKey(recipientAddress),
-            lamports: amountRaw
-          })
-        );
-      }
-
-      // Serialize transaction to base64 (required by CDP API)
-      const serializedTransaction = transaction.serialize({
-        requireAllSignatures: false,
-        verifySignatures: false
-      }).toString('base64');
-
-      console.log('📤 [SOLANA] Sending transaction...');
-
-      // Determine CDP network parameter
-      const cdpNetwork = isDevnet ? 'solana-devnet' : 'solana';
-
-      // Send transaction using CDP hook
-      const result = await sendSolanaTransaction({
-        solanaAccount: solanaAddress,
-        network: cdpNetwork as any,
-        transaction: serializedTransaction
-      });
-
-      console.log('✅ [SOLANA] Transaction successful:', result.transactionSignature);
-
-      setTxHash(result.transactionSignature);
-
-      // Show success alert with signature
-      const explorerUrl = isDevnet
-        ? `https://explorer.solana.com/tx/${result.transactionSignature}?cluster=devnet`
-        : `https://solscan.io/tx/${result.transactionSignature}`;
-
-      const successInfo = `🔍 TRANSACTION CONFIRMED:
-
-Signature:
-${result.transactionSignature}
-
-Amount: ${amount} ${tokenSymbol}
-Network: Solana ${isDevnet ? 'Devnet' : 'Mainnet'}
-From: ${solanaAddress.slice(0, 6)}...${solanaAddress.slice(-4)}
-To: ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`;
-
-      showAlert(
-        'Transfer Complete! ✨',
-        successInfo,
-        'success',
-        explorerUrl
-      );
-    } catch (error) {
-      console.error('Solana transfer error:', error);
-      throw error;
-    }
-  };
+  // REMOVED: handleSolanaTransfer — Base/EVM only
 
   const handleAlertDismiss = () => {
     setAlertVisible(false);
@@ -620,25 +386,6 @@ To: ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`;
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Solana SPL Token Notice - show helpful info for SPL tokens (not native SOL) */}
-          {selectedToken?.token?.mintAddress && selectedToken?.token?.symbol?.toUpperCase() !== 'SOL' && (
-            <View style={[styles.card, { backgroundColor: '#E3F2FD', borderColor: '#2196F3' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                <Ionicons name="information-circle" size={20} color="#1976D2" style={{ marginTop: 2 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.helper, { color: '#1976D2', fontWeight: '600' }]}>
-                    SPL Token Transfer
-                  </Text>
-                  <Text style={[styles.helper, { color: '#1976D2', marginTop: 4 }]}>
-                    {network?.toLowerCase().includes('devnet')
-                      ? 'You may need ~0.003 SOL in your wallet to create the recipient\'s token account (ATA) if they don\'t have one yet.'
-                      : 'You need native SOL in your wallet to cover transaction fees. If the recipient doesn\'t have this token yet, approximately 0.00204 SOL will be required to create their Associated Token Account (ATA).'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          )}
-
           {/* Network Info */}
           <View style={styles.card}>
             <Text style={styles.label}>Network</Text>
@@ -649,8 +396,6 @@ To: ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`;
                 if (networkLower === 'base-sepolia') return 'Base Sepolia';
                 if (networkLower === 'ethereum') return 'Ethereum';
                 if (networkLower === 'ethereum-sepolia') return 'Ethereum Sepolia';
-                if (networkLower.includes('solana') && networkLower.includes('devnet')) return 'Solana Devnet';
-                if (networkLower.includes('solana')) return 'Solana';
                 // Capitalize first letter for unknown networks
                 return network.charAt(0).toUpperCase() + network.slice(1);
               })()}
@@ -703,7 +448,7 @@ To: ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`;
                 style={[styles.input, { flex: 1 } , addressError && { borderColor: '#FF6B6B' }]}
                 value={recipientAddress}
                 onChangeText={handleAddressChange}
-                placeholder={network === 'solana' ? 'Solana address' : '0x...'}
+                placeholder="0x..."
                 placeholderTextColor={TEXT_SECONDARY}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -813,9 +558,7 @@ To: ${recipientAddress.slice(0, 6)}...${recipientAddress.slice(-4)}`;
               <View style={styles.confirmRow}>
                 <Text style={styles.confirmLabel}>From</Text>
                 <Text style={styles.confirmValue} numberOfLines={1}>
-                  {network.toLowerCase().includes('solana')
-                    ? (solanaAddress?.slice(0, 6) + '...' + solanaAddress?.slice(-4))
-                    : (smartAccountAddress?.slice(0, 6) + '...' + smartAccountAddress?.slice(-4))}
+                  {smartAccountAddress?.slice(0, 6) + '...' + smartAccountAddress?.slice(-4)}
                 </Text>
               </View>
 

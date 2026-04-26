@@ -316,7 +316,6 @@ export function useOnramp() {
 
       // CRITICAL: For EVM networks, MUST use Smart Account (same as Apple Pay)
       const isEvmNetwork = ['base', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'avalanche', 'linea', 'zksync'].includes(networkName.toLowerCase());
-      const isSolanaNetwork = networkName.toLowerCase().includes('solana');
       const isSandbox = getSandboxMode();
 
       let destinationAddress = formData.address;
@@ -325,9 +324,7 @@ export function useOnramp() {
         formDataAddress: formData.address,
         network: networkName,
         isEvmNetwork,
-        isSolanaNetwork,
         isSandbox,
-        currentUserSolana: currentUser?.solanaAccounts?.[0],
         currentUserEvm: currentUser?.evmSmartAccounts?.[0]
       });
 
@@ -343,18 +340,6 @@ export function useOnramp() {
         }
         destinationAddress = smartAccount;
         console.log('🔒 [ONRAMP] Using Smart Account for EVM widget transaction:', smartAccount);
-      } else if (!isSandbox && isSolanaNetwork) {
-        // For Solana in production, use real Solana address from CDP
-        const isTestFlight = isTestSessionActive();
-        const solanaAddress = isTestFlight
-          ? TEST_ACCOUNTS.wallets.solana  // TestFlight: Use hardcoded address
-          : (currentUser?.solanaAccounts?.[0] as string); // Real users: Use CDP Solana Account
-
-        if (!solanaAddress) {
-          throw new Error('Solana account required for Solana onramp transactions. Please ensure your Embedded Wallet is properly initialized.');
-        }
-        destinationAddress = solanaAddress;
-        console.log('🔒 [ONRAMP] Using Solana Account for Solana widget transaction:', solanaAddress);
       }
 
       // Auth handled by authenticatedFetch

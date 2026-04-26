@@ -6,7 +6,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaV
 import { CoinbaseAlert } from '../components/ui/CoinbaseAlerts';
 import { COLORS } from '../constants/Colors';
 import { isTestAccount, TEST_ACCOUNTS } from '../constants/TestAccounts';
-import { setCurrentSolanaAddress, setCurrentWalletAddress, setTestSession } from '../utils/sharedState';
+import { setCurrentWalletAddress, setTestSession } from '../utils/sharedState';
 
 const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, BLUE, WHITE } = COLORS;
 const RESEND_SECONDS = 30;
@@ -95,9 +95,8 @@ export default function EmailCodeScreen() {
         }
 
         // Set up mock session (no CDP involved)
-        await setTestSession(TEST_ACCOUNTS.wallets.evm, TEST_ACCOUNTS.wallets.solana);
+        await setTestSession(TEST_ACCOUNTS.wallets.evm, '');
         setCurrentWalletAddress(TEST_ACCOUNTS.wallets.evm);
-        setCurrentSolanaAddress(TEST_ACCOUNTS.wallets.solana);
 
         setAlert({
           visible: true,

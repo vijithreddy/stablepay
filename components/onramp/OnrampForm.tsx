@@ -9,7 +9,7 @@
  * DYNAMIC FILTERING (Many-to-Many Relationships):
  *
  * Assets and Networks have a many-to-many relationship:
- * - USDC available on: Base, Ethereum, Polygon, Solana, etc.
+ * - USDC available on: Base, Ethereum, Polygon, etc.
  * - Base supports: USDC, ETH
  *
  * Form behavior:
@@ -25,10 +25,10 @@
  * NETWORK CHANGE HANDLING:
  *
  * When user changes network, address must update (network-aware routing):
- * 1. User selects "Solana" network
+ * 1. User selects a network
  * 2. Form detects network change (useEffect with prevNetworkRef)
  * 3. Calls getCurrentWalletAddress() from sharedState
- * 4. Gets Solana-specific address
+ * 4. Gets network-specific address
  * 5. Calls onAddressChange() to update parent (index.tsx)
  * 6. Parent updates both address and connectedAddress states
  *
@@ -42,14 +42,13 @@
  * 1. Amount: Must be positive number, within payment method limits
  * 2. Address: Format validation based on network type
  *    - EVM: 0x + 40 hex characters
- *    - Solana: 32-44 base58 characters (no 0, O, I, l)
  *    - Sandbox: Any non-empty string (testing flexibility)
- * 3. Network Support: EVM/SOL only in production, any in sandbox
+ * 3. Network Support: EVM only in production (Base), any in sandbox
  *
  * NOTIFICATION CARDS (Context-Aware Messaging):
  *
  * Shows different cards based on state:
- * 1. Network Not Supported (prod, non-EVM/SOL): Orange warning
+ * 1. Network Not Supported (prod, non-EVM): Orange warning
  * 2. Smart Account Required (prod, EVM, no smart account): Red error
  * 3. Wallet Required (prod, no address): Red error
  * 4. Address Required (sandbox, no address): Red error
@@ -166,8 +165,7 @@ export function OnrampForm({
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslate = useRef(new Animated.Value(300)).current;
   const isApplePay = paymentMethod === 'GUEST_CHECKOUT_APPLE_PAY';
-  const isGooglePay = paymentMethod === 'GUEST_CHECKOUT_GOOGLE_PAY';
-  const isGuestCheckout = isApplePay || isGooglePay;
+  const isGuestCheckout = isApplePay;
 
   // User limits state
   const [userLimits, setUserLimits] = useState<{ weekly: UserLimit; lifetime: UserLimit } | null>(null);
@@ -198,12 +196,6 @@ const usSubs = useMemo(() => {
     return evmList.some((k) => n.includes(k));
   })();
 
-  const isSolanaNetwork = (() => {
-    const n = (network || '').toLowerCase();
-    const solanaList = ['solana', 'sol'];
-    return solanaList.some((k) => n.includes(k));
-  })();
-
   const displayCurrencies = React.useMemo(() => {
     const list = Array.isArray(paymentCurrencies) && paymentCurrencies.length ? paymentCurrencies : ['USD'];
     return isGuestCheckout ? ['USD'] : list;
@@ -226,16 +218,15 @@ const usSubs = useMemo(() => {
     if (prevNetworkRef.current === network) return;
     prevNetworkRef.current = network;
 
-    if (!localSandboxEnabled && (isEvmNetwork || isSolanaNetwork)) {
-      // Only update address for supported networks (EVM/Solana) in production mode
-      // For unsupported networks (Noble, etc.), don't auto-update
+    if (!localSandboxEnabled && isEvmNetwork) {
+      // Only update address for supported EVM networks (Base) in production mode
       const { getCurrentWalletAddress } = require('../../utils/sharedState');
       const newAddress = getCurrentWalletAddress();
       if (newAddress && newAddress !== address) {
         onAddressChange(newAddress);
       }
     }
-  }, [network, address, onAddressChange, isEvmNetwork, isSolanaNetwork, localSandboxEnabled]);
+  }, [network, address, onAddressChange, isEvmNetwork, localSandboxEnabled]);
   
 
   const amountNumber = useMemo(() => {
@@ -246,12 +237,6 @@ const usSubs = useMemo(() => {
 
   const isAmountValid = Number.isFinite(amountNumber) && amountNumber > 0;
   const isEvmAddressValid = /^0x[0-9a-fA-F]{40}$/.test(address);
-  const isSolanaAddressValid = (() => {
-    // Basic Solana address validation: 32-44 characters, base58 encoded
-    if (!address || address.length < 32 || address.length > 44) return false;
-    // Check if it looks like base58 (no 0, O, I, l characters)
-    return /^[1-9A-HJ-NP-Za-km-z]+$/.test(address);
-  })();
 
   // Use local state as single source of truth for sandbox mode
   const isSandbox = localSandboxEnabled;
@@ -267,8 +252,7 @@ const usSubs = useMemo(() => {
 
   const hasValidAddress = isSandbox
     ? !!address && address.trim().length > 0  // In sandbox, just need any non-empty address
-    : (isEvmNetwork ? isEvmAddressValid :
-       isSolanaNetwork ? isSolanaAddressValid : false); // In production, need valid address for supported networks
+    : isEvmAddressValid; // In production, need valid EVM address (Base)
 
   // For production EVM networks, must have Smart Account
   const isFormValid = isAmountValid && !!network && !!asset && hasValidAddress && (!needsSmartAccount || hasSmartAccount);
@@ -337,14 +321,7 @@ const usSubs = useMemo(() => {
   }, [network, getAvailableAssets]);
 
   const methods = useMemo(() => {
-    const arr = [{ display: 'Coinbase Widget', value: 'COINBASE_WIDGET' }];
-    if (country === 'US' && paymentCurrency === 'USD') {
-      if (Platform.OS === 'android') {
-        arr.push({ display: 'Google Pay API', value: 'GUEST_CHECKOUT_GOOGLE_PAY' });
-      } else if (Platform.OS === 'ios') {
-        arr.push({ display: 'Apple Pay API', value: 'GUEST_CHECKOUT_APPLE_PAY' });
-      }
-    }
+    const arr = [{ display: 'Apple Pay API', value: 'GUEST_CHECKOUT_APPLE_PAY' }];
     return arr;
   }, [country, paymentCurrency]);
   
@@ -513,13 +490,13 @@ const usSubs = useMemo(() => {
     }
   }, [subPickerVisible]);
 
-  // If user switches to a non‑supported network, clear the address (only in production mode)
+  // If user switches to a non-EVM network, clear the address (only in production mode)
   // In sandbox mode, allow any address for any network
   useEffect(() => {
-    if (!localSandboxEnabled && !isEvmNetwork && !isSolanaNetwork && address) {
+    if (!localSandboxEnabled && !isEvmNetwork && address) {
       onAddressChange('');
     }
-  }, [isEvmNetwork, isSolanaNetwork, address, onAddressChange, localSandboxEnabled]);
+  }, [isEvmNetwork, address, onAddressChange, localSandboxEnabled]);
 
   const getCurrencyLimits = useCallback(() => {
     if (!options?.payment_currencies) return null;
@@ -527,7 +504,7 @@ const usSubs = useMemo(() => {
     const currency = options.payment_currencies.find((c: any) => c.id === paymentCurrency);
     if (!currency?.limits) return null;
     
-    if (paymentMethod === 'GUEST_CHECKOUT_APPLE_PAY' || paymentMethod === 'GUEST_CHECKOUT_GOOGLE_PAY') {
+    if (paymentMethod === 'GUEST_CHECKOUT_APPLE_PAY') {
       return {
         min: 2,
         max: 1000,
@@ -711,34 +688,6 @@ const usSubs = useMemo(() => {
       bounces
       overScrollMode="always"
     >
-      {/* Environment Card (Sandbox / Production) */}
-      <View style={styles.card}>
-        <View style={styles.paymentRow}>
-          <Text style={styles.paymentLabel}>
-            {localSandboxEnabled ? 'Sandbox Environment' : 'Production Environment'}
-          </Text>
-          <Switch
-            value={localSandboxEnabled}
-            onValueChange={(value) => {
-              console.log('🔄 [SANDBOX TOGGLE] User toggled sandbox to:', value);
-              setLocalSandboxEnabled(value); // Single source of truth
-              setSandboxMode(value); // Sync to shared state for other components
-            }}
-            trackColor={{ true: BLUE, false: BORDER }}
-            thumbColor={Platform.OS === 'android' ? (localSandboxEnabled ? '#ffffff' : '#f4f3f4') : undefined}
-          />
-        </View>
-        <Text style={styles.helper}>
-          {localSandboxEnabled ? 'Test without real transactions' : 'Real transactions will be executed'}
-        </Text>
-
-        {localSandboxEnabled && isGuestCheckout && (
-          <Text style={[styles.helper, { marginTop: 4 }]}>
-            sandbox- prefix + auto-confirm modal
-          </Text>
-        )}
-      </View>
-
       {/* Buy Card */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Buy</Text>
@@ -766,7 +715,7 @@ const usSubs = useMemo(() => {
             <View>
               {limits && (
                 <Text style={styles.limitsText}>
-                  {isApplePay ? 'Apple Pay limit: ' : isGooglePay ? 'Google Pay limit: ' : 'Payment method limit: '}{limits.display}
+                  Apple Pay limit: {limits.display}
                 </Text>
               )}
               {userLimits && !localSandboxEnabled && (
@@ -801,62 +750,13 @@ const usSubs = useMemo(() => {
               </Text>
             )}
       </View>
-          <Pressable style={styles.assetSelect} onPress={() => setAssetPickerVisible(true)}>
-            <View style={styles.selectContent}>
-              {(() => {
-                const selectedAssetObj = availableAssets.find((assetObj: any) => 
-                  assetObj.name === asset || assetObj.symbol === asset
-                );
-                return selectedAssetObj?.icon_url && (
-                  <Image 
-                    source={{ uri: selectedAssetObj.icon_url }} 
-                    style={styles.assetIcon}
-                  />
-                );
-              })()}
-              <Text style={styles.assetText}>{asset}</Text>
-            </View>
-            <Ionicons name="chevron-down" size={16} color={TEXT_SECONDARY} />
-        </Pressable>
+          <View style={styles.assetSelect}>
+            <Text style={styles.assetText}>USDC</Text>
+          </View>
+      </View>
       </View>
 
-        {/* Network Row */}
-        <View style={styles.networkRow}>
-          <Text style={styles.networkLabel}>Network</Text>
-          <Pressable style={styles.networkSelect} onPress={() => setNetworkPickerVisible(true)}>
-            <View style={styles.selectContent}>
-              {(() => {
-                const selectedNetworkObj = availableNetworks.find((net: any) => 
-                  net.display_name === network || net.name === network
-                );
-                return selectedNetworkObj?.icon_url && (
-                  <Image 
-                    source={{ uri: selectedNetworkObj.icon_url }} 
-                    style={styles.networkIcon}
-                  />
-                );
-              })()}
-               <View style={styles.selectTextContainer}>
-                 <Text style={styles.networkText}>{network}</Text>
-               </View>
-               </View>
-             <Ionicons name="chevron-down" size={16} color={TEXT_SECONDARY} style={styles.selectChevron} />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Payment Method Card */}
-      <View style={styles.card}>
-        <View style={styles.paymentRow}>
-          <Text style={styles.paymentLabel}>Pay with</Text>
-          <Pressable style={styles.paymentSelect} onPress={() => setPaymentPickerVisible(true)}>
-            <View style={styles.selectContent}>
-              <Text style={styles.paymentText}>{getPaymentMethodDisplay(paymentMethod)}</Text>
-            </View>
-            <Ionicons name="chevron-down" size={16} color={TEXT_SECONDARY} />
-        </Pressable>
-        </View>
-      </View>
+      {/* Payment method: Apple Pay only (locked) */}
 
   
       {/* Sandbox Toggle
@@ -911,14 +811,14 @@ const usSubs = useMemo(() => {
       )}
 
       {/* Wallet Notification */}
-      {!localSandboxEnabled && !isEvmNetwork && !isSolanaNetwork ? (
+      {!localSandboxEnabled && !isEvmNetwork ? (
         <View style={styles.notificationCard}>
           <View style={styles.notificationHeader}>
             <Ionicons name="information-circle" size={20} color="#FF8C00" />
             <Text style={styles.notificationTitle}>Network Not Supported</Text>
           </View>
           <Text style={styles.notificationText}>
-            This network is available for Onramp, but Embedded Wallet is not supported at the moment. Try it out in Sandbox mode, or select an EVM or Solana network to proceed.
+            This network is available for Onramp, but Embedded Wallet is not supported at the moment. Try it out in Sandbox mode, or select Base to proceed.
           </Text>
         </View>
       ) : needsSmartAccount && !hasSmartAccount ? (
@@ -938,7 +838,7 @@ const usSubs = useMemo(() => {
             <Text style={[styles.notificationTitle, { color: '#FF6B6B' }]}>Wallet Required</Text>
           </View>
           <Text style={styles.notificationText}>
-            Connect a valid {isEvmNetwork ? 'EVM' : isSolanaNetwork ? 'Solana' : 'wallet'} address to continue
+            Connect a valid EVM address to continue
           </Text>
         </View>
       ) : localSandboxEnabled && !address ? (
@@ -979,7 +879,7 @@ const usSubs = useMemo(() => {
             <Text style={[styles.notificationText, { marginTop: 8, fontFamily: 'monospace' }]}>
               Using wallet: {address}
             </Text>
-          ) : !isEvmNetwork && !isSolanaNetwork ? (
+          ) : !isEvmNetwork ? (
             <Text style={[styles.notificationText, { marginTop: 8, fontStyle: 'italic', color: TEXT_SECONDARY }]}>
               Network not supported for embedded wallets
             </Text>
@@ -1110,189 +1010,7 @@ const usSubs = useMemo(() => {
           </Animated.View>
         </View>
       </Modal>
-      {/* Asset picker modal */}
-      <Modal
-        visible={assetPickerVisible}
-        transparent
-        animationType="none"
-        presentationStyle="overFullScreen"
-        onRequestClose={() => setAssetPickerVisible(false)}
-      >
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          {/* Backdrop - click to dismiss */}
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: backdropOpacity }]}
-          >
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setAssetPickerVisible(false)} />
-          </Animated.View>
-
-          {/* Sheet with handle */}
-          <Animated.View style={[styles.modalSheet, { transform: [{ translateY: sheetTranslate }] }]}>
-            {/* Handle bar */}
-            <View style={styles.modalHandle} />
-            
-            <ScrollView 
-              style={styles.modalScrollView}
-              showsVerticalScrollIndicator={true}
-              keyboardShouldPersistTaps="handled"
-            >
-              {availableAssets.map((assetOption: any, index: number) => {
-                const displayName = assetOption.name || assetOption.symbol || 'Unknown Asset';
-                const iconUrl = assetOption.icon_url;
-                const isSelected = displayName === asset;
-                
-                return (
-              <Pressable
-                    key={`asset-${index}-${displayName}`}
-                onPress={() => {
-                      setAsset(displayName);
-                  setAssetPickerVisible(false);
-                }}
-                    style={[styles.modalItem, isSelected && styles.modalItemSelected]}
-                  >
-                    <View style={styles.modalItemContent}>
-                      <View style={styles.modalItemLeft}>
-                        {iconUrl && (
-                          <Image 
-                            source={{ uri: iconUrl }} 
-                            style={styles.modalItemIcon}
-                          />
-                        )}
-                        <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                          {displayName}
-                        </Text>
-          </View>
-                      {isSelected && (
-                        <Ionicons name="checkmark" size={20} color={BLUE} />
-                      )}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      {/* Network picker modal */}
-      <Modal
-        visible={networkPickerVisible}
-        transparent
-        animationType="none"
-        presentationStyle="overFullScreen"
-        onRequestClose={() => setNetworkPickerVisible(false)}
-      >
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: backdropOpacity }]}
-          >
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setNetworkPickerVisible(false)} />
-          </Animated.View>
-
-          <Animated.View style={[styles.modalSheet, { transform: [{ translateY: sheetTranslate }] }]}>
-            <View style={styles.modalHandle} />
-            
-            <ScrollView 
-              style={styles.modalScrollView}
-              showsVerticalScrollIndicator={true}
-              keyboardShouldPersistTaps="handled"
-            >
-              {isLoadingOptions ? (
-                <View style={styles.modalItem}>
-                  <Text style={styles.modalItemText}>Loading networks...</Text>
-                </View>
-              ) : (
-                availableNetworks.map((networkOption: any, index: number) => {
-                  const displayName = networkOption.display_name || networkOption.name || 'Unknown Network';
-                  const iconUrl = networkOption.icon_url;
-                  const isSelected = displayName === network;
-                  
-                  return (
-              <Pressable
-                      key={`network-${index}-${displayName}`}
-                onPress={() => {
-                        setNetwork(displayName);
-                  setNetworkPickerVisible(false);
-                }}
-                      style={[styles.modalItem, isSelected && styles.modalItemSelected]}
-                    >
-                      <View style={styles.modalItemContent}>
-                        <View style={styles.modalItemLeft}>
-                          {iconUrl && (
-                            <Image 
-                              source={{ uri: iconUrl }} 
-                              style={styles.modalItemIcon}
-                            />
-                          )}
-                          <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                            {displayName}
-                          </Text>
-          </View>
-                        {isSelected && (
-                          <Ionicons name="checkmark" size={20} color={BLUE} />
-                        )}
-                      </View>
-                    </Pressable>
-                  );
-                })
-              )}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      {/* Payment method picker modal */}
-      <Modal
-        visible={paymentPickerVisible}
-        transparent
-        animationType="none"
-        presentationStyle="overFullScreen"
-        onRequestClose={() => setPaymentPickerVisible(false)}
-      >
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: backdropOpacity }]}
-          >
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setPaymentPickerVisible(false)} />
-          </Animated.View>
-
-          <Animated.View style={[styles.modalSheet, { transform: [{ translateY: sheetTranslate }] }]}>
-            <View style={styles.modalHandle} />
-            
-            <ScrollView 
-              style={styles.modalScrollView}
-              showsVerticalScrollIndicator={true}
-              keyboardShouldPersistTaps="handled"
-            >
-              {methods.map((method, index) => {
-                const isSelected = method.value === paymentMethod;
-                
-                return (
-              <Pressable
-                    key={`payment-${index}-${method.value}`}
-                onPress={() => {
-                      setPaymentMethod(method.value);
-                  setPaymentPickerVisible(false);
-                }}
-                    style={[styles.modalItem, isSelected && styles.modalItemSelected]}
-                  >
-                    <View style={styles.modalItemContent}>
-                      <View style={styles.modalItemLeft}>
-                        <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                          {method.display}
-                        </Text>
-                      </View>
-                      {isSelected && (
-                        <Ionicons name="checkmark" size={20} color={BLUE} />
-                      )}
-                    </View>
-              </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
+      {/* Asset, network, and payment method picker modals removed — locked to USDC/Base/Apple Pay */}
 
       {/* Country picker modal */}
       <Modal

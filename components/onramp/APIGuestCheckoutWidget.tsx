@@ -2,21 +2,20 @@ import { useEffect, useRef } from "react";
 import { WebView } from "react-native-webview";
 
 /**
- * Shared Guest Checkout WebView Widget for Apple Pay (iOS) and Google Pay (Android).
+ * Guest Checkout WebView Widget for Apple Pay.
  *
  * Orchestrates the payment flow via a behind-the-scenes WebView:
  *
  * 1. Loads the Coinbase hosted payment page (paymentLink URL from Create Order API)
- * 2. On load_success (page event), auto-clicks the native pay button
+ * 2. On load_success (page event), auto-clicks the Apple Pay button
  * 3. What happens next depends on the mode:
  *
  *    PRODUCTION (isSandbox=false):
- *      Native payment sheet appears (Apple Pay on iOS, Google Pay on Android).
- *      User confirms on the native sheet.
+ *      Native Apple Pay sheet appears. User confirms.
  *
  *    SANDBOX (isSandbox=true):
  *      partnerUserRef is prefixed with "sandbox-" (handled by useOnramp).
- *      URL gets useApplePaySandbox=true or useGooglePaySandbox=true appended.
+ *      URL gets useApplePaySandbox=true appended.
  *      Transaction completes automatically without real funds.
  *
  * 4. All transaction lifecycle events are dispatched by the payment page itself
@@ -29,12 +28,6 @@ const PAYMENT_CONFIG = {
     hideCSS: 'apple-pay-button { display: none !important; }',
     label: 'Apple Pay',
     sandboxParam: 'useApplePaySandbox',
-  },
-  GUEST_CHECKOUT_GOOGLE_PAY: {
-    buttonId: 'gpay-button-online-api-id',
-    hideCSS: '#api-onramp-google-pay-button { visibility: hidden !important; height: 0 !important; overflow: hidden !important; }',
-    label: 'Google Pay',
-    sandboxParam: 'useGooglePaySandbox',
   },
 } as const;
 

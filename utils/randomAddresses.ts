@@ -14,10 +14,7 @@ export const demoAddressForNetwork = (network: string) => {
   ].some(k => n.includes(k));
   if (isEvm) return '0x' + rand(HEX, 40);
 
-  if (n.includes('sol')) {
-    // Solana: 44-char base58
-    return '11111111111111111111111111111112'; //  Demo address for quote
-  }
+  // REMOVED: Solana address generation
 
   if (n.includes('btc') || n.includes('bitcoin')) {
     // Bitcoin bech32-like

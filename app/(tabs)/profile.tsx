@@ -12,19 +12,12 @@
  *
  * WALLET EXPORT FLOW:
  *
- * User has multiple wallets (EVM + SOL):
+ * EVM wallet only (Base):
  * 1. Click "Export private key"
- * 2. Choose wallet type modal (EVM or Solana)
- * 3. Confirmation modal (security warning)
- * 4. exportEvmAccount() or exportSolanaAccount() from CDP
- * 5. Private key copied to clipboard
- * 6. Alert shown with security reminder
- *
- * Single wallet (EVM only or SOL only):
- * 1. Click "Export private key"
- * 2. Skip choice modal (auto-detect wallet type)
- * 3. Go directly to confirmation modal
- * 4. Export and copy to clipboard
+ * 2. Confirmation modal (security warning)
+ * 3. exportEvmAccount() from CDP
+ * 4. Private key copied to clipboard
+ * 5. Alert shown with security reminder
  *
  * EXPO GO LIMITATIONS:
  * - Wallet export disabled (expo-crypto doesn't support key export)
@@ -88,13 +81,11 @@ import {
   useCurrentUser,
   useEvmAddress,
   useExportEvmAccount,
-  useExportSolanaAccount,
   useIsInitialized,
   useIsSignedIn,
   useLinkSms,
   useSignInWithSms,
   useSignOut,
-  useSolanaAddress,
 } from "@coinbase/cdp-hooks";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Clipboard from "expo-clipboard";
@@ -106,7 +97,7 @@ import { BASE_URL } from "../../constants/BASE_URL";
 import { COLORS } from "../../constants/Colors";
 import { TEST_ACCOUNTS } from "../../constants/TestAccounts";
 import { debugSecureStoreSession } from "../../utils/debugSession";
-import { clearManualAddress, clearTestSession, daysUntilExpiry, forceUnverifyPhone, formatPhoneDisplay, getLifetimeTransactionThreshold, getManualWalletAddress, getSandboxMode, getTestWalletSol, getVerifiedPhone, getVerifiedPhoneUserId, isPhoneFresh60d, isTestSessionActive, setCountry, setCurrentSolanaAddress, setCurrentWalletAddress, setLifetimeTransactionThreshold, setManualWalletAddress, setSandboxMode, setSubdivision, setVerifiedPhone, setPendingOfframpBalance } from "../../utils/sharedState";
+import { clearManualAddress, clearTestSession, daysUntilExpiry, forceUnverifyPhone, formatPhoneDisplay, getLifetimeTransactionThreshold, getManualWalletAddress, getSandboxMode, getVerifiedPhone, getVerifiedPhoneUserId, isPhoneFresh60d, isTestSessionActive, setCountry, setCurrentWalletAddress, setLifetimeTransactionThreshold, setManualWalletAddress, setSandboxMode, setSubdivision, setVerifiedPhone, setPendingOfframpBalance } from "../../utils/sharedState";
 import { createOfframpSession } from "../../utils/createOfframpSession";
 import * as WebBrowser from 'expo-web-browser';
 
@@ -143,19 +134,13 @@ export default function WalletScreen() {
   const primaryAddress = smartAccountAddress || explicitEOAAddress;
 
   const { exportEvmAccount } = useExportEvmAccount();
-  const { exportSolanaAccount } = useExportSolanaAccount();
-  const { solanaAddress: cdpSolanaAddress } = useSolanaAddress();
   const { evmAddress } = useEvmAddress();
-
-  // Override solana address for test session
-  const solanaAddress = testSession ? getTestWalletSol() : cdpSolanaAddress;
 
   // For export: Use EOA first, then evmAddress hook, then smart account
   const evmWalletAddress = explicitEOAAddress || evmAddress || smartAccountAddress;
 
-
   const [showExportConfirm, setShowExportConfirm] = useState(false);
-  const [exportType, setExportType] = useState<'evm' | 'solana'>('evm');
+  const [exportType, setExportType] = useState<'evm'>('evm');
   const [exporting, setExporting] = useState(false);
 
   // Phone verification state - use local state that updates on focus
@@ -332,7 +317,6 @@ export default function WalletScreen() {
       setTestnetBalances([]);
       setTestnetBalancesError(null);
       setCurrentWalletAddress(null);
-      setCurrentSolanaAddress(null);
     }
   }, [effectiveIsSignedIn]);
 
@@ -340,13 +324,12 @@ export default function WalletScreen() {
   useEffect(() => {
     if (effectiveIsSignedIn) {
       setCurrentWalletAddress(primaryAddress ?? null);
-      setCurrentSolanaAddress(solanaAddress ?? null);
     }
-  }, [primaryAddress, solanaAddress, effectiveIsSignedIn]);
+  }, [primaryAddress, effectiveIsSignedIn]);
 
   // Fetch balances when wallet addresses are available
   const fetchBalances = useCallback(async () => {
-    if (!primaryAddress && !solanaAddress) return;
+    if (!primaryAddress) return;
 
     setLoadingBalances(true);
     setBalancesError(null);
@@ -376,10 +359,9 @@ export default function WalletScreen() {
 
       const allBalances: any[] = [];
 
-      // Fetch EVM balances (Base + Ethereum)
+      // Fetch Base balances
       if (primaryAddress) {
         try {
-          // Fetch Base balances
           const baseResponse = await fetch(`${BASE_URL}/balances/evm?address=${primaryAddress}&network=base`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
@@ -390,38 +372,8 @@ export default function WalletScreen() {
             const baseData = await baseResponse.json();
             allBalances.push(...(baseData.balances || []).map((b: any) => ({ ...b, network: 'Base' })));
           }
-
-          // Fetch Ethereum balances
-          const ethResponse = await fetch(`${BASE_URL}/balances/evm?address=${primaryAddress}&network=ethereum`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (ethResponse.ok) {
-            const ethData = await ethResponse.json();
-            allBalances.push(...(ethData.balances || []).map((b: any) => ({ ...b, network: 'Ethereum' })));
-          }
         } catch (e) {
-          console.error('Error fetching EVM balances:', e);
-        }
-      }
-
-      // Fetch Solana balances
-      if (solanaAddress) {
-        try {
-          const solResponse = await fetch(`${BASE_URL}/balances/solana?address=${solanaAddress}`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (solResponse.ok) {
-            const solData = await solResponse.json();
-            allBalances.push(...(solData.balances || []).map((b: any) => ({ ...b, network: 'Solana' })));
-          }
-        } catch (e) {
-          console.error('Error fetching Solana balances:', e);
+          console.error('Error fetching Base balances:', e);
         }
       }
 
@@ -433,11 +385,11 @@ export default function WalletScreen() {
     } finally {
       setLoadingBalances(false);
     }
-  }, [primaryAddress, solanaAddress]);
+  }, [primaryAddress]);
 
   // Fetch testnet balances
   const fetchTestnetBalances = useCallback(async () => {
-    if (!primaryAddress && !solanaAddress) return;
+    if (!primaryAddress) return;
 
     setLoadingTestnetBalances(true);
     setTestnetBalancesError(null);
@@ -467,10 +419,9 @@ export default function WalletScreen() {
 
       const allTestnetBalances: any[] = [];
 
-      // Fetch EVM testnet balances
+      // Fetch Base Sepolia testnet balances
       if (primaryAddress) {
         try {
-          // Fetch Base Sepolia balances
           const baseSepoliaResponse = await fetch(`${BASE_URL}/balances/evm?address=${primaryAddress}&network=base-sepolia`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
@@ -481,38 +432,8 @@ export default function WalletScreen() {
             const baseSepoliaData = await baseSepoliaResponse.json();
             allTestnetBalances.push(...(baseSepoliaData.balances || []).map((b: any) => ({ ...b, network: 'Base Sepolia' })));
           }
-
-          // Fetch Ethereum Sepolia balances via backend
-          const ethSepoliaResponse = await fetch(`${BASE_URL}/balances/evm?address=${primaryAddress}&network=ethereum-sepolia`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (ethSepoliaResponse.ok) {
-            const ethSepoliaData = await ethSepoliaResponse.json();
-            allTestnetBalances.push(...(ethSepoliaData.balances || []).map((b: any) => ({ ...b, network: 'Ethereum Sepolia' })));
-          }
         } catch (e) {
-          console.error('Error fetching EVM testnet balances:', e);
-        }
-      }
-
-      // Fetch Solana Devnet balances
-      if (solanaAddress) {
-        try {
-          const solDevnetResponse = await fetch(`${BASE_URL}/balances/solana?address=${solanaAddress}&network=solana-devnet`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (solDevnetResponse.ok) {
-            const solDevnetData = await solDevnetResponse.json();
-            allTestnetBalances.push(...(solDevnetData.balances || []).map((b: any) => ({ ...b, network: 'Solana Devnet' })));
-          }
-        } catch (e) {
-          console.error('Error fetching Solana Devnet balances:', e);
+          console.error('Error fetching Base Sepolia testnet balances:', e);
         }
       }
 
@@ -524,25 +445,25 @@ export default function WalletScreen() {
     } finally {
       setLoadingTestnetBalances(false);
     }
-  }, [primaryAddress, solanaAddress]);
+  }, [primaryAddress]);
 
   // Fetch balances on mount and when addresses change
   useEffect(() => {
-    if (effectiveIsSignedIn && (primaryAddress || solanaAddress)) {
+    if (effectiveIsSignedIn && primaryAddress) {
       fetchBalances();
       fetchTestnetBalances();
     }
-  }, [effectiveIsSignedIn, primaryAddress, solanaAddress, fetchBalances, fetchTestnetBalances]);
+  }, [effectiveIsSignedIn, primaryAddress, fetchBalances, fetchTestnetBalances]);
 
   // Re-fetch balances when profile tab comes into focus
   useFocusEffect(
     useCallback(() => {
-      if (effectiveIsSignedIn && (primaryAddress || solanaAddress)) {
+      if (effectiveIsSignedIn && primaryAddress) {
         console.log('🔄 [PROFILE] Tab focused - refreshing balances');
         fetchBalances();
         fetchTestnetBalances();
       }
-    }, [effectiveIsSignedIn, primaryAddress, solanaAddress, fetchBalances, fetchTestnetBalances])
+    }, [effectiveIsSignedIn, primaryAddress, fetchBalances, fetchTestnetBalances])
   );
 
   const handleDebugSession = useCallback(async () => {
@@ -603,7 +524,7 @@ export default function WalletScreen() {
   const [showWalletChoice, setShowWalletChoice] = useState(false);
 
   const handleRequestExport = () => {
-    if (!effectiveIsSignedIn || (!evmWalletAddress && !solanaAddress)) return; // Allow export if either wallet exists
+    if (!effectiveIsSignedIn || !evmWalletAddress) return;
 
     if (isExpoGo) {
       setAlertState({
@@ -615,16 +536,8 @@ export default function WalletScreen() {
       return;
     }
 
-    // If both wallets exist, show choice modal, otherwise export the available one
-    if (evmWalletAddress && solanaAddress) {
-      setShowWalletChoice(true);
-    } else if (evmWalletAddress) {
-      setExportType('evm');
+    setExportType('evm');
     setShowExportConfirm(true);
-    } else if (solanaAddress) {
-      setExportType('solana');
-      setShowExportConfirm(true);
-    }
   };
 
   const handleConfirmedExport = async () => {
@@ -655,15 +568,12 @@ export default function WalletScreen() {
       return;
     }
 
-    // Real account export flow
-    const isEvmExport = exportType === 'evm';
-    const targetAddress = isEvmExport ? evmWalletAddress : solanaAddress;
-
-    if (!targetAddress) {
+    // Real account export flow (EVM/Base only)
+    if (!evmWalletAddress) {
     setAlertState({
       visible: true,
         title: "Export failed",
-        message: `No ${isEvmExport ? 'EVM' : 'Solana'} address found for export.`,
+        message: "No EVM address found for export.",
         type: "error",
       });
       return;
@@ -671,21 +581,14 @@ export default function WalletScreen() {
 
     setExporting(true);
     try {
-      console.log(`Exporting ${isEvmExport ? 'EVM' : 'Solana'} wallet:`, targetAddress);
-      let result;
-      if (isEvmExport) {
-        // Use the EVM address string - this is what CDP expects
-        result = await exportEvmAccount({ evmAccount: evmWalletAddress! as `0x${string}` });
-      } else {
-        // Export Solana wallet
-        result = await exportSolanaAccount({ solanaAccount: solanaAddress! });
-      }
+      console.log('Exporting EVM wallet:', evmWalletAddress);
+      const result = await exportEvmAccount({ evmAccount: evmWalletAddress! as `0x${string}` });
 
       await Clipboard.setStringAsync(result.privateKey);
       setAlertState({
         visible: true,
         title: "Private key copied",
-        message: `Your ${isEvmExport ? 'EVM' : 'Solana'} private key has been copied to the clipboard. Store it securely and clear your clipboard.`,
+        message: "Your EVM private key has been copied to the clipboard. Store it securely and clear your clipboard.",
       type: "info",
     });
     } catch (e) {
@@ -712,7 +615,7 @@ export default function WalletScreen() {
       setAlertState({
         visible: true,
         title: "Export failed",
-        message: `${errorMessage}${errorDetails}\n\nWallet: ${isEvmExport ? 'EVM' : 'Solana'}\nAddress: ${targetAddress}`,
+        message: `${errorMessage}${errorDetails}\n\nWallet: EVM\nAddress: ${evmWalletAddress}`,
         type: "error",
       });
     } finally {
@@ -970,74 +873,16 @@ export default function WalletScreen() {
                     </View>
                   )}
 
-                  {explicitEOAAddress && (
-                    <View style={[styles.subBox, { flexDirection: 'row', alignItems: 'center' }]}>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.subHint}>EVM EOA Address (owner of Smart Account)</Text>
-                        <Text
-                          selectable
-                          style={styles.subValue}
-                          numberOfLines={1}
-                          ellipsizeMode="middle"
-                        >
-                          {explicitEOAAddress}
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={async () => {
-                          await Clipboard.setStringAsync(explicitEOAAddress || '');
-                          setAlertState({
-                            visible: true,
-                            title: "Address copied",
-                            message: "EOA address copied to clipboard",
-                            type: "info",
-                          });
-                        }}
-                        style={styles.copyButton}
-                      >
-                        <Ionicons name="copy-outline" size={20} color={BLUE} />
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {solanaAddress && (
-                    <View style={[styles.subBox, { flexDirection: 'row', alignItems: 'center' }]}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.subHint}>Solana wallet address</Text>
-                      <Text
-                        selectable
-                        style={styles.subValue}
-                        numberOfLines={1}
-                        ellipsizeMode="middle"
-                      >
-                        {solanaAddress}
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={async () => {
-                        await Clipboard.setStringAsync(solanaAddress || '');
-                        setAlertState({
-                          visible: true,
-                          title: "Address copied",
-                          message: "Solana wallet address copied to clipboard",
-                          type: "info",
-                        });
-                      }}
-                      style={styles.copyButton}
-                    >
-                      <Ionicons name="copy-outline" size={20} color={BLUE} />
-                    </Pressable>
-                  </View>
-                  )}
+                  {/* EOA wallet section removed -- Smart Account only */}
 
                   <Pressable
                     style={[
                       styles.button,
                       { backgroundColor: '#DC2626' },
-                      (isExpoGo || (!evmWalletAddress && !solanaAddress) || exporting) && styles.buttonDisabled
+                      (isExpoGo || !evmWalletAddress || exporting) && styles.buttonDisabled
                     ]}
                     onPress={handleRequestExport}
-                    disabled={(!evmWalletAddress && !solanaAddress) || exporting}
+                    disabled={!evmWalletAddress || exporting}
                   >
                     <Text style={styles.buttonText}>
                       {exporting ? "Exporting..." : isExpoGo ? "Export unavailable (Expo Go)" : "Export private key"}
@@ -1092,7 +937,7 @@ export default function WalletScreen() {
                 </Pressable>
 
                 <Text style={styles.helper}>
-                  Showing balances for Base, Ethereum, and Solana mainnet
+                  Showing balances for Base mainnet
                 </Text>
 
                 {balancesExpanded && (
@@ -1127,7 +972,7 @@ export default function WalletScreen() {
                     {!loadingBalances && !balancesError && (
                       <View style={{ marginTop: 16 }}>
                         {/* Group balances by network */}
-                        {['Base', 'Ethereum', 'Solana'].map(networkName => {
+                        {['Base'].map(networkName => {
                           const networkBalances = balances.filter(b => b.network === networkName);
 
                           return (
@@ -1220,12 +1065,7 @@ export default function WalletScreen() {
                                               const userId = currentUser?.userId;
                                               if (!userId) throw new Error('User not signed in');
 
-                                              // EVM balances use the smart account; Solana uses the solana address
-                                              const isSolanaNetwork = network.toLowerCase() === 'solana';
-                                              const address = isSolanaNetwork
-                                                ? solanaAddress
-                                                : primaryAddress;
-
+                                              const address = primaryAddress;
                                               if (!address) throw new Error('No wallet address found');
 
                                               // Store balance so offramp-send can access decimals/contract info
@@ -1288,7 +1128,7 @@ export default function WalletScreen() {
             )}
 
             {/* Testnet Balances - show when wallet is connected */}
-            {effectiveIsSignedIn && (primaryAddress || solanaAddress) && (
+            {effectiveIsSignedIn && primaryAddress && (
               <View style={styles.card}>
                       <Pressable
                   onPress={() => setTestnetBalancesExpanded(!testnetBalancesExpanded)}
@@ -1303,7 +1143,7 @@ export default function WalletScreen() {
                 </Pressable>
 
                 <Text style={styles.helper}>
-                  Showing balances for Base Sepolia, Ethereum Sepolia, and Solana Devnet
+                  Showing balances for Base Sepolia
                 </Text>
 
                 {testnetBalancesExpanded && (
@@ -1345,31 +1185,9 @@ export default function WalletScreen() {
                                 <Text style={styles.buttonText}>Get Base Sepolia ETH</Text>
                               </Pressable>
 
-                              <Pressable
-                                style={[styles.button, { backgroundColor: VIOLET }]}
-                                onPress={() => {
-                                  const faucetUrl = `https://portal.cdp.coinbase.com/products/faucet?address=${primaryAddress}&network=ethereum-sepolia`;
-                                  Linking.openURL(faucetUrl);
-                                }}
-                              >
-                                <Ionicons name="water-outline" size={16} color={WHITE} style={{ marginRight: 8 }} />
-                                <Text style={styles.buttonText}>Get Ethereum Sepolia ETH</Text>
-                      </Pressable>
                     </>
                   )}
 
-                          {solanaAddress && (
-                            <Pressable
-                              style={[styles.button, { backgroundColor: VIOLET }]}
-                              onPress={() => {
-                                const faucetUrl = `https://portal.cdp.coinbase.com/products/faucet?address=${solanaAddress}&network=solana-devnet`;
-                                Linking.openURL(faucetUrl);
-                              }}
-                            >
-                              <Ionicons name="water-outline" size={16} color={WHITE} style={{ marginRight: 8 }} />
-                              <Text style={styles.buttonText}>Get Solana Devnet SOL</Text>
-                            </Pressable>
-                  )}
                 </View>
 
                         <Pressable style={[styles.button, { marginTop: 12 }]} onPress={fetchTestnetBalances}>
@@ -1381,7 +1199,7 @@ export default function WalletScreen() {
                     {!loadingTestnetBalances && !testnetBalancesError && (
                       <View style={{ marginTop: 16 }}>
                         {/* Group balances by network */}
-                        {['Base Sepolia', 'Ethereum Sepolia', 'Solana Devnet'].map(networkName => {
+                        {['Base Sepolia'].map(networkName => {
                           const networkBalances = testnetBalances.filter(b => b.network === networkName);
 
                           return (
@@ -1393,12 +1211,8 @@ export default function WalletScreen() {
                   <Pressable
                                   style={styles.faucetIconButton}
                                   onPress={() => {
-                                    let faucetUrl;
-                                    const address = networkName.includes('Solana') ? solanaAddress : primaryAddress;
-                                    const networkParam = networkName === 'Base Sepolia' ? 'base-sepolia'
-                                      : networkName === 'Ethereum Sepolia' ? 'ethereum-sepolia'
-                                      : 'solana-devnet';
-                                    faucetUrl = `https://portal.cdp.coinbase.com/products/faucet?address=${address}&network=${networkParam}`;
+                                    const networkParam = networkName === 'Base Sepolia' ? 'base-sepolia' : 'base-sepolia';
+                                    const faucetUrl = `https://portal.cdp.coinbase.com/products/faucet?address=${primaryAddress}&network=${networkParam}`;
                                     Linking.openURL(faucetUrl);
                                   }}
                                 >
@@ -1529,96 +1343,9 @@ export default function WalletScreen() {
               </View>
             </View>
 
-            {/* Sandbox Wallet Card - show when sandbox mode is enabled */}
-            {localSandboxEnabled && (
-              <View style={styles.card}>
-                <Text style={styles.rowLabel}>🧪 Sandbox Testing</Text>
+            {/* Sandbox wallet card removed */}
 
-              <View style={styles.subBox}>
-                  <Text style={styles.subHint}>Manual Wallet Address (Optional Override)</Text>
-                  <View style={styles.inputContainer}>
-                    <TextInput
-                      style={[styles.input, { flex: 1, marginRight: 8 }]}
-                      value={manualAddress}
-                      onChangeText={setManualAddress}
-                      placeholder="Enter any wallet address for testing"
-                      placeholderTextColor={TEXT_SECONDARY}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    {manualAddress ? (
-                      <Pressable
-                        style={styles.pasteButton}
-                        onPress={() => setManualAddress('')}
-                      >
-                        <Ionicons name="close-circle" size={20} color={TEXT_SECONDARY} />
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        style={styles.pasteButton}
-                        onPress={async () => {
-                          const text = await Clipboard.getStringAsync();
-                          if (text) setManualAddress(text);
-                        }}
-                      >
-                        <Ionicons name="clipboard-outline" size={20} color={BLUE} />
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-                <Text style={styles.helper}>
-                  ⚠️ Manual address will be cleared when switching to production mode. In sandbox mode, you can input any address to override your connected wallet for testing purposes.
-                </Text>
-              </View>
-            )}
-
-            {/* Wallet choice modal - shown when user has both EVM and Solana wallets */}
-            <Modal
-              visible={showWalletChoice}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowWalletChoice(false)}
-            >
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                  <Text style={styles.modalTitle}>Choose Wallet Type</Text>
-                  <Text style={styles.modalMessage}>
-                    Which wallet would you like to export?
-                </Text>
-
-                  <View style={styles.modalButtonsVertical}>
-                    <Pressable
-                      style={[styles.button, styles.modalButton, { backgroundColor: BLUE }]}
-                      onPress={() => {
-                        setExportType('evm');
-                        setShowWalletChoice(false);
-                        setShowExportConfirm(true);
-                      }}
-                    >
-                      <Text style={styles.buttonText}>Export EVM Wallet</Text>
-              </Pressable>
-
-              <Pressable
-                      style={[styles.button, styles.modalButton, { backgroundColor: BLUE }]}
-                      onPress={() => {
-                        setExportType('solana');
-                        setShowWalletChoice(false);
-                        setShowExportConfirm(true);
-                      }}
-                    >
-                      <Text style={styles.buttonText}>Export Solana Wallet</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[styles.button, styles.modalButton, { backgroundColor: BORDER }]}
-                      onPress={() => setShowWalletChoice(false)}
-                    >
-                      <Text style={[styles.buttonText, { color: TEXT_PRIMARY }]}>Cancel</Text>
-              </Pressable>
-            </View>
-                </View>
-              </View>
-            </Modal>
+            {/* Export confirm modal is EVM-only (Base) */}
 
             {/* Export confirm modal */}
             <Modal

@@ -9,14 +9,13 @@
  *
  * STATE CATEGORIES:
  *
- * 1. WALLET ADDRESSES (currentWalletAddress, currentSolanaAddress, manualWalletAddress)
+ * 1. WALLET ADDRESSES (currentWalletAddress, manualWalletAddress)
  *    - EVM address: Smart Account or EOA from CDP
- *    - Solana address: Solana account from CDP
  *    - Manual address: Testing-only input for sandbox mode
- *    - getCurrentWalletAddress(): Network-aware resolution (see below)
+ *    - getCurrentWalletAddress(): Returns EVM address (see below)
  *
  * 2. NETWORK TRACKING (currentNetwork)
- *    - Tracks selected blockchain network (Base, Ethereum, Solana, etc.)
+ *    - Tracks selected blockchain network (Base, Ethereum, etc.)
  *    - Updated by OnrampForm when user changes network dropdown
  *    - Used for address resolution logic
  *
@@ -42,42 +41,14 @@
  *    - pendingForm: Stores form data when user needs phone verification
  *
  * ============================================================================
- * WALLET ADDRESS PRIORITY SYSTEM - NETWORK-AWARE ROUTING
+ * WALLET ADDRESS RESOLUTION
  * ============================================================================
  *
- * getCurrentWalletAddress() returns different addresses based on:
- * - Current network (EVM vs Solana vs Unsupported)
- * - Sandbox vs Production mode
- * - Available wallet types
+ * getCurrentWalletAddress() returns the EVM wallet address.
+ * App is USDC/Base/Apple-Pay only — no multi-chain routing needed.
  *
- * SANDBOX MODE (testing with flexibility):
- * ┌─────────────────┬──────────────────────────────────────┐
- * │ Network Type    │ Address Priority                     │
- * ├─────────────────┼──────────────────────────────────────┤
- * │ Solana/SOL      │ manual > SOL wallet > null           │
- * │ EVM (eth, base) │ manual > EVM wallet > null           │
- * │ Other (bitcoin) │ manual > EVM wallet > null           │
- * └─────────────────┴──────────────────────────────────────┘
- *
- * PRODUCTION MODE (strict network-wallet matching):
- * ┌─────────────────┬──────────────────────────────────────┐
- * │ Network Type    │ Address Priority                     │
- * ├─────────────────┼──────────────────────────────────────┤
- * │ SOL             │ SOL wallet ONLY > null               │
- * │ EVM (eth, base) │ EVM wallet ONLY > null               │
- * │ Other (bitcoin) │ NULL (unsupported)                   │
- * └─────────────────┴──────────────────────────────────────┘
- *
- * EXAMPLES:
- * - User has EVM + SOL wallets, selects "Solana" → returns SOL address
- * - User has EVM wallet only, selects "Base" → returns EVM address
- * - User has EVM wallet only, selects "Bitcoin" (prod) → returns null (shows error card)
- * - User in sandbox with manual address, selects any network → returns manual address
- *
- * WHY THIS DESIGN?
- * - Sandbox: Flexibility for testing any network with demo addresses
- * - Production: Safety - prevent sending crypto to wrong address type
- * - Network-aware: Same user can have multiple wallets for different chains
+ * SANDBOX MODE:  manual > EVM wallet > null
+ * PRODUCTION:    EVM wallet > null
  *
  * @see components/onramp/OnrampForm.tsx for network change handling
  * @see app/(tabs)/index.tsx for address updates on network changes
@@ -96,7 +67,8 @@ const DEFAULT_LIFETIME_TX_THRESHOLD = 5;
 
 let currentPartnerUserRef: string | null = null;
 let currentWalletAddress: string | null = null;
-let currentSolanaAddress: string | null = null;
+// REMOVED: Solana address state
+let currentSolanaAddress: string | null = null; // kept for type compat, unused
 
 let verifiedPhone: string | null = null;
 let verifiedPhoneAt: number | null = null;
@@ -161,6 +133,7 @@ const TEST_SESSION_KEY = '@onramp_test_session';
 
 let testSessionActive = false;
 let testWalletEvm: string | null = null;
+// REMOVED: Solana test wallet
 let testWalletSol: string | null = null;
 
 export const setTestSession = async (evmAddress: string, solAddress: string) => {
@@ -250,46 +223,12 @@ export const setCurrentNetwork = (network: string) => {
 
 export const getCurrentNetwork = () => currentNetwork;
 
-// utils/sharedState.ts - document wallet address priority
-/**
- * Wallet address priority system:
- *
- * SANDBOX MODE:
- * - SOL network: manual > SOL wallet
- * - EVM and ANY other network: manual > EVM wallet
- *
- * PRODUCTION MODE:
- * - SOL network: SOL wallet only
- * - EVM networks: EVM wallet only
- * - Unsupported networks: null (no address)
- */
+// REMOVED: Solana network routing — Base/EVM only
 export const getCurrentWalletAddress = () => {
-  const networkLower = (currentNetwork || '').toLowerCase();
-  const isSolanaNetwork = ['solana', 'sol'].some(k => networkLower.includes(k));
-  const isEvmNetwork = ['ethereum', 'base', 'unichain', 'polygon', 'arbitrum', 'optimism', 'avalanche', 'avax', 'bsc', 'fantom', 'linea', 'zksync', 'scroll'].some(k => networkLower.includes(k));
-
   if (sandboxMode) {
-    // Sandbox mode: allow testing with any address
-    if (isSolanaNetwork) {
-      // SOL network: prefer manual, fallback to SOL wallet
-      return manualWalletAddress || currentSolanaAddress || null;
-    } else {
-      // EVM and ANY other network (including unsupported): prefer manual, fallback to EVM wallet
-      return manualWalletAddress || currentWalletAddress || null;
-    }
-  } else {
-    // Production mode: strict network-wallet matching
-    if (isSolanaNetwork) {
-      // SOL network: SOL wallet only
-      return currentSolanaAddress || null;
-    } else if (isEvmNetwork) {
-      // EVM networks: EVM wallet only
-      return currentWalletAddress || null;
-    } else {
-      // Unsupported networks (Bitcoin, Noble, etc.): NO address
-      return null;
-    }
+    return manualWalletAddress || currentWalletAddress || null;
   }
+  return currentWalletAddress || null;
 };
 
 export const setVerifiedPhone = async (phone: string | null, userId?: string) => {

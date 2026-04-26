@@ -3,10 +3,11 @@
  * HOME/INDEX - MAIN ONRAMP PAGE (Tab 1)
  * ============================================================================
  *
- * This is the main page where users purchase crypto. It coordinates:
+ * This is the main page where users purchase USDC on Base via Apple Pay.
+ * It coordinates:
  * - OnrampForm component (user input)
  * - useOnramp hook (API calls)
- * - APIGuestCheckoutWidget component (Apple Pay / Google Pay payment processing)
+ * - APIGuestCheckoutWidget component (Apple Pay payment processing)
  * - Wallet connection state
  *
  * ADDRESS STATE MANAGEMENT (Critical for UX):
@@ -14,18 +15,12 @@
  * Three address-related states:
  * 1. address: Current form input (what user sees in form)
  * 2. connectedAddress: Wallet connection status (for "Connected" button)
- * 3. isConnected: Derived boolean (has ANY wallet, regardless of network support)
+ * 3. isConnected: Derived boolean (has a wallet)
  *
  * Why separate states?
- * - address: Can be empty for unsupported networks (Bitcoin in prod)
- * - connectedAddress: Still valid (user HAS a wallet, just wrong type)
+ * - address: Can be empty for unsupported networks
+ * - connectedAddress: Still valid (user HAS a wallet)
  * - isConnected: Shows "Connected" button (user is signed in with wallet)
- *
- * Example:
- * - User has EVM wallet, selects Bitcoin network
- * - address: "" (no EVM wallet works for Bitcoin)
- * - connectedAddress: "0x1234..." (still has EVM wallet)
- * - isConnected: true (shows "Connected" button, not "Connect Wallet")
  *
  * NETWORK POLLING (200ms interval):
  *
@@ -48,9 +43,7 @@
  * ┌─────────────────────────────────────────────────────────────┐
  * │ User clicks "Swipe to Deposit"                              │
  * │   ↓                                                         │
- * │ Payment method?                                             │
- * │   ├─ Widget → createWidgetSession() → Browser (NO PHONE)   │
- * │   └─ Apple Pay → Check phone verification:                 │
+ * │ Apple Pay → Check phone verification:                       │
  * │       ├─ Sandbox → Use mock phone (+12345678901)           │
  * │       └─ Production:                                        │
  * │           ├─ Has fresh phone? → createOrder()              │
@@ -62,8 +55,7 @@
  * When user returns from phone verification:
  * 1. useFocusEffect detects tab focus
  * 2. Checks getPendingForm() for saved form data
- * 3. If Widget: Creates session immediately (no phone needed)
- * 4. If Apple Pay: Verifies phone is fresh, then creates order
+ * 3. Verifies phone is fresh, then creates order
  * 5. Clears pending form to prevent re-processing
  *
  * WALLET INITIALIZATION (Multiple sources):
@@ -71,18 +63,15 @@
  * CDP wallets can come from multiple sources:
  * - currentUser.evmAccounts[0]: EOA (Externally Owned Account)
  * - currentUser.evmSmartAccounts[0]: Smart Account (Account Abstraction)
- * - currentUser.solanaAccounts[0]: Solana account
  * - evmAddress hook: Fallback EVM address
- * - solanaAddress hook: Fallback Solana address
  *
  * Priority for setting shared state:
  * EVM: evmEOA > evmSmartAccount > evmAddress hook
- * SOL: solanaAccounts[0] > solanaAddress hook
  *
  * This runs in multiple useEffects to handle:
  * - Initial load (may take 5s for wallet creation)
  * - Tab focus (user might verify in another tab)
- * - Network changes (switch between EVM/SOL)
+ * - Network changes
  *
  * @see components/onramp/OnrampForm.tsx for form UI
  * @see components/onramp/APIGuestCheckoutWidget.tsx for payment WebView
@@ -90,15 +79,15 @@
  * @see utils/sharedState.ts for address resolution
  */
 
-import { useCurrentUser, useEvmAddress, useIsSignedIn, useSignOut, useSolanaAddress } from "@coinbase/cdp-hooks";
+import { useCurrentUser, useEvmAddress, useIsSignedIn, useSignOut } from "@coinbase/cdp-hooks";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { APIGuestCheckoutWidget, OnrampForm, useOnramp } from "../../components";
 import { CoinbaseAlert } from "../../components/ui/CoinbaseAlerts";
 import { COLORS } from "../../constants/Colors";
 import { TEST_ACCOUNTS } from "../../constants/TestAccounts";
-import { clearPhoneVerifyWasCanceled, getCountry, getCurrentNetwork, getCurrentPartnerUserRef, getCurrentWalletAddress, getPendingForm, getPhoneVerifyWasCanceled, getSandboxMode, getSubdivision, getTestWalletEvm, getTestWalletSol, getVerifiedPhone, isPhoneFresh60d, isTestSessionActive, setCurrentSolanaAddress, setCurrentWalletAddress, setPendingForm } from "../../utils/sharedState";
+import { clearPhoneVerifyWasCanceled, getCountry, getCurrentNetwork, getCurrentPartnerUserRef, getCurrentWalletAddress, getPendingForm, getPhoneVerifyWasCanceled, getSandboxMode, getSubdivision, getTestWalletEvm, getVerifiedPhone, isPhoneFresh60d, isTestSessionActive, setCurrentWalletAddress, setPendingForm } from "../../utils/sharedState";
 import { createGuestCheckoutDebugInfo, openSupportEmail, SUPPORT_EMAIL } from "../../utils/supportEmail";
 
 
@@ -140,19 +129,16 @@ export default function Index() {
   const { isSignedIn } = useIsSignedIn();
   const { currentUser } = useCurrentUser();
   const { evmAddress: cdpEvmAddress } = useEvmAddress();
-  const { solanaAddress: cdpSolanaAddress } = useSolanaAddress();
   const { signOut } = useSignOut();
   const [connectedAddress, setConnectedAddress] = useState('');
 
   // Override addresses for test session
   const evmAddress = testSession ? getTestWalletEvm() : cdpEvmAddress;
-  const solanaAddress = testSession ? getTestWalletSol() : cdpSolanaAddress;
 
-  // Wallet is connected if user has ANY wallet (EVM or SOL), regardless of current network
+  // Wallet is connected if user has an EVM wallet
   const hasEvmWallet = testSession ? !!getTestWalletEvm() : !!(currentUser?.evmAccounts?.[0] || currentUser?.evmSmartAccounts?.[0] || evmAddress);
-  const hasSolWallet = testSession ? !!getTestWalletSol() : !!(currentUser?.solanaAccounts?.[0] || solanaAddress);
   const effectiveIsSignedIn = testSession || isSignedIn;
-  const isConnected = effectiveIsSignedIn && (hasEvmWallet || hasSolWallet);
+  const isConnected = effectiveIsSignedIn && hasEvmWallet;
 
   const [trackedNetwork, setTrackedNetwork] = useState(getCurrentNetwork());
 
@@ -203,7 +189,7 @@ export default function Index() {
       setConnectedAddress('');
       setAddress('');
     }
-  }, [effectiveIsSignedIn, currentUser, evmAddress, solanaAddress]);
+  }, [effectiveIsSignedIn, currentUser, evmAddress]);
 
   useFocusEffect(
     useCallback(() => {
@@ -230,19 +216,15 @@ export default function Index() {
       return;
     }
 
-    // Get addresses from CDP hooks
+    // Get EVM addresses from CDP hooks
     const evmSmartAccount = currentUser?.evmSmartAccounts?.[0] as string;
     const evmEOA = currentUser?.evmAccounts?.[0] as string || evmAddress;
-    const solAccount = currentUser?.solanaAccounts?.[0] as string || solanaAddress;
 
     // Set in shared state (so getCurrentWalletAddress works)
     // IMPORTANT: Prioritize Smart Account over EOA for onramp (balances are in Smart Account)
     const primaryEvmAddress = evmSmartAccount || evmEOA;
     if (primaryEvmAddress) {
       setCurrentWalletAddress(primaryEvmAddress);
-    }
-    if (solAccount) {
-      setCurrentSolanaAddress(solAccount);
     }
 
     // Get network-aware wallet address from shared state
@@ -268,7 +250,7 @@ export default function Index() {
     }, 500);
 
     return () => clearInterval(t);
-  }, [effectiveIsSignedIn, testSession, currentUser, evmAddress, solanaAddress]);
+  }, [effectiveIsSignedIn, testSession, currentUser, evmAddress]);
 
   useFocusEffect(
     useCallback(() => {
@@ -283,7 +265,7 @@ export default function Index() {
       } else {
         setConnectedAddress('');
       }
-    }, [effectiveIsSignedIn, currentUser, address, evmAddress, solanaAddress])
+    }, [effectiveIsSignedIn, currentUser, address, evmAddress])
   );
 
   
@@ -320,7 +302,6 @@ export default function Index() {
 
   const {
     createOrder,
-    createWidgetSession,
     closeGuestCheckout,
     options,
     isLoadingOptions,
@@ -385,19 +366,6 @@ export default function Index() {
 
       const handlePendingForm = async () => {
         try {
-          // If pending was for Coinbase Widget, do it immediately (no phone gate)
-          if ((pendingForm.paymentMethod || '').toUpperCase() === 'COINBASE_WIDGET') {
-            console.log('📤 [PENDING FORM] Processing Coinbase Widget pending form');
-            (async () => {
-              const url = await createWidgetSession(pendingForm);
-              if (url) {
-                Linking.openURL(url);
-                setPendingForm(null);
-              }
-            })();
-            return;
-          }
-
           // Apple Pay path - wait for user to be signed in before proceeding
           if (!effectiveIsSignedIn) {
             return; // Wait for next render when user is signed in
@@ -416,22 +384,13 @@ export default function Index() {
             const networkApiName = getNetworkNameFromDisplayName(pendingForm.network);
             const assetApiName = getAssetSymbolFromName(pendingForm.asset);
 
-            // Determine the correct address based on network type for pending form
+            // Determine the correct EVM address for pending form
             let targetAddress = pendingForm.address;
             if (!isSandbox) {
-              const networkType = networkApiName.toLowerCase();
-              const isEvmNetwork = ['ethereum', 'base', 'unichain', 'polygon', 'arbitrum', 'optimism', 'avalanche', 'avax', 'bsc', 'fantom', 'linea', 'zksync', 'scroll'].some(k => networkType.includes(k));
-              const isSolanaNetwork = ['solana', 'sol'].some(k => networkType.includes(k));
-
-              if (isEvmNetwork) {
-                const evmEOA = currentUser?.evmAccounts?.[0] as string || evmAddress;
-                const evmSmart = currentUser?.evmSmartAccounts?.[0] as string;
-                // Prioritize Smart Account for onramp (balances stored there)
-                targetAddress = evmSmart || evmEOA || targetAddress;
-              } else if (isSolanaNetwork) {
-                const solAccount = currentUser?.solanaAccounts?.[0] as string || solanaAddress;
-                targetAddress = solAccount || targetAddress;
-              }
+              const evmEOA = currentUser?.evmAccounts?.[0] as string || evmAddress;
+              const evmSmart = currentUser?.evmSmartAccounts?.[0] as string;
+              // Prioritize Smart Account for onramp (balances stored there)
+              targetAddress = evmSmart || evmEOA || targetAddress;
             }
 
             // Update form data with converted API names and correct address
@@ -475,36 +434,24 @@ export default function Index() {
         }
       };
       handlePendingForm();
-    }, [pendingForm, createOrder, createWidgetSession, getNetworkNameFromDisplayName, getAssetSymbolFromName, currentUser, evmAddress, solanaAddress, effectiveIsSignedIn])
+    }, [pendingForm, createOrder, getNetworkNameFromDisplayName, getAssetSymbolFromName, currentUser, evmAddress, effectiveIsSignedIn])
   );
 
   const handleSubmit = useCallback(async (formData: any) => {
     setIsProcessingPayment(true);
 
-    // CRITICAL: Convert display names to API format (e.g., "Solana" → "solana", "USD Coin" → "USDC")
+    // CRITICAL: Convert display names to API format (e.g., "Base" → "base", "USD Coin" → "USDC")
     const networkApiName = getNetworkNameFromDisplayName(formData.network);
     const assetApiName = getAssetSymbolFromName(formData.asset);
 
-    // Determine the correct address based on network type (moved outside try-catch)
+    // Determine the correct EVM address (moved outside try-catch)
     const isSandbox = getSandboxMode();
     let targetAddress = formData.address;
 
     if (!isSandbox) {
-      // In production mode, use network-specific addresses
-      const networkType = networkApiName.toLowerCase();
-      const isEvmNetwork = ['ethereum', 'base', 'polygon', 'arbitrum', 'optimism', 'avalanche', 'avax', 'bsc', 'fantom', 'linea', 'zksync', 'scroll'].some(k => networkType.includes(k));
-      const isSolanaNetwork = ['solana', 'sol'].some(k => networkType.includes(k));
-
-      if (isEvmNetwork) {
-        // Use EVM address for EVM networks
-        const evmEOA = currentUser?.evmAccounts?.[0] as string || evmAddress;
-        const evmSmart = currentUser?.evmSmartAccounts?.[0] as string;
-        targetAddress = evmEOA || evmSmart || targetAddress;
-      } else if (isSolanaNetwork) {
-        // Use Solana address for Solana networks
-        const solAccount = currentUser?.solanaAccounts?.[0] as string || solanaAddress;
-        targetAddress = solAccount || targetAddress;
-      }
+      const evmEOA = currentUser?.evmAccounts?.[0] as string || evmAddress;
+      const evmSmart = currentUser?.evmSmartAccounts?.[0] as string;
+      targetAddress = evmEOA || evmSmart || targetAddress;
     }
 
     // Update the form data with converted API names and correct address
@@ -524,18 +471,10 @@ export default function Index() {
         network: networkApiName
       });
 
-      // Coinbase Widget: skip phone/email verification
-      if ((formData.paymentMethod || '').toUpperCase() === 'COINBASE_WIDGET') {
-        const url = await createWidgetSession(updatedFormData);
-        if (url) Linking.openURL(url);
-        return; // do not call createOrder()
-      }
-
       // Apple Pay: createOrder will validate email + phone and throw appropriate errors
       await createOrder(updatedFormData);
     } catch (error: any) {
-      const isGooglePay = formData.paymentMethod === 'GUEST_CHECKOUT_GOOGLE_PAY';
-      const paymentLabel = isGooglePay ? 'Google Pay' : 'Apple Pay';
+      const paymentLabel = 'Apple Pay';
 
       if (error.code === 'MISSING_EMAIL') {
         setPendingForm(updatedFormData);
@@ -681,7 +620,7 @@ export default function Index() {
         setApplePayAlert({
           visible: true,
           title: 'US Phone Required',
-          message: `${paymentLabel} Guest Checkout is only available for US phone numbers.\n\nYou can:\n• Switch to Coinbase Widget for international payments\n• Use Sandbox mode to test the ${paymentLabel} flow\n• Link a US phone number to your account`,
+          message: `${paymentLabel} is only available for US phone numbers.\n\nYou can:\n• Use Sandbox mode to test the ${paymentLabel} flow\n• Link a US phone number to your account`,
           type: 'info'
         });
         setIsProcessingPayment(false);
@@ -715,7 +654,7 @@ export default function Index() {
       console.error('Error submitting form:', error);
       setIsProcessingPayment(false);
     }
-  }, [createOrder, createWidgetSession, router, currentUser, evmAddress, solanaAddress, getNetworkNameFromDisplayName, getAssetSymbolFromName, signOut, currentTransaction]);
+  }, [createOrder, router, currentUser, evmAddress, getNetworkNameFromDisplayName, getAssetSymbolFromName, signOut, currentTransaction]);
     
   
   return (
@@ -771,7 +710,7 @@ export default function Index() {
       {guestCheckoutVisible && activePaymentMethod && (
         <APIGuestCheckoutWidget
           paymentUrl={hostedUrl}
-          paymentMethod={activePaymentMethod as 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_GOOGLE_PAY'}
+          paymentMethod={activePaymentMethod as 'GUEST_CHECKOUT_APPLE_PAY'}
           onClose={closeGuestCheckout}
           setIsProcessingPayment={setIsProcessingPayment}
           isSandbox={isSandboxOrder}

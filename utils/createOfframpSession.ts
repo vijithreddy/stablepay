@@ -6,7 +6,7 @@ function toBlockchainId(network: string): string {
   switch (network.toLowerCase()) {
     case 'base': return 'base';
     case 'ethereum': return 'ethereum';
-    case 'solana': return 'solana';
+    // REMOVED: Solana
     default: return network.toLowerCase();
   }
 }
@@ -18,9 +18,9 @@ function toBlockchainId(network: string): string {
  * The redirectUrl encodes the partnerUserRef so offramp-send.tsx can
  * fetch the transaction details after Coinbase redirects back to the app.
  *
- * @param address  - User's wallet address (smart account for EVM, solana address for SOL)
- * @param network  - Display network name: "Base" | "Ethereum" | "Solana"
- * @param asset    - Token symbol: "ETH" | "USDC" | "SOL" etc.
+ * @param address  - User's wallet address (smart account for EVM)
+ * @param network  - Display network name: "Base" | "Ethereum"
+ * @param asset    - Token symbol: "USDC" etc.
  * @param userId   - partnerUserRef (currentUser.userId)
  * @returns Full offramp URL to open in the system browser
  */

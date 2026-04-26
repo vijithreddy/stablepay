@@ -126,8 +126,8 @@ function generateSimpleEntityHash(): string {
  */
 function buildDebugBlock(info: TransactionDebugInfo | GuestCheckoutDebugInfo): string {
   const timestamp = new Date().toISOString();
-  const locale = Localization.locale || 'en-US';
-  const timezone = Localization.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const locale = Localization.getLocales()[0]?.languageTag || 'en-US';
+  const timezone = Localization.getCalendars()[0]?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const appVersion = Application.nativeApplicationVersion || 'unknown';
   const appId = process.env.EXPO_PUBLIC_CDP_PROJECT_ID || 'unknown';
   const sandboxMode = getSandboxMode();

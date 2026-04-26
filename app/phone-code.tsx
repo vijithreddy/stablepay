@@ -5,7 +5,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaV
 import { CoinbaseAlert } from '../components/ui/CoinbaseAlerts';
 import { COLORS } from '../constants/Colors';
 import { TEST_ACCOUNTS } from '../constants/TestAccounts';
-import { setVerifiedPhone, setCurrentWalletAddress, setCurrentSolanaAddress, setTestSession } from '../utils/sharedState';
+import { setVerifiedPhone, setCurrentWalletAddress, setTestSession } from '../utils/sharedState';
 import { useCurrentUser, useVerifySmsOTP, useSignInWithSms, useLinkSms, useIsInitialized } from '@coinbase/cdp-hooks';
 
 const { DARK_BG, CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, BLUE, WHITE } = COLORS;
@@ -96,9 +96,8 @@ export default function PhoneCodeScreen() {
         if (mode === 'signin') {
           // Mock wallet creation for TestFlight
           console.log('🧪 Creating test session for phone signin');
-          await setTestSession(TEST_ACCOUNTS.wallets.evm, TEST_ACCOUNTS.wallets.solana);
+          await setTestSession(TEST_ACCOUNTS.wallets.evm, '');
           setCurrentWalletAddress(TEST_ACCOUNTS.wallets.evm);
-          setCurrentSolanaAddress(TEST_ACCOUNTS.wallets.solana);
           await setVerifiedPhone(phone, TEST_ACCOUNTS.userId);
           router.replace('/(tabs)');
         } else if (mode === 'reverify') {
